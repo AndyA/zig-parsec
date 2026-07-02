@@ -97,8 +97,8 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
         pub fn recurse(comptime field_name: []const u8) Parser {
             const shim = struct {
                 fn match(ctx: *Context, input: []const u8) ZpcError!Result {
-                    const hook = @field(Context, field_name);
-                    return hook(ctx, input);
+                    const parser = @field(Context, field_name);
+                    return parser(ctx, input);
                 }
             };
             return shim.match;
