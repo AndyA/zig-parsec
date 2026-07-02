@@ -9,7 +9,7 @@ const Allocator = std.mem.Allocator;
 pub const ZpcError = error{OutOfMemory};
 pub const ZpcPred = fn (char: u8) bool;
 
-pub fn ZpcNode(comptime Tag: type) type {
+pub fn ZpcToken(comptime Tag: type) type {
     return struct {
         const Self = @This();
         tag: Tag,
@@ -39,7 +39,7 @@ pub fn ZpcResult(comptime Tag: type) type {
     return struct {
         const Self = @This();
         tok: union(enum) {
-            ok: ZpcNode(Tag),
+            ok: ZpcToken(Tag),
             fail: void,
         },
         rest: []const u8,
@@ -48,7 +48,7 @@ pub fn ZpcResult(comptime Tag: type) type {
             return .{ .tok = .{ .fail = {} }, .rest = rest };
         }
 
-        pub fn initOk(value: ZpcNode(Tag), rest: []const u8) Self {
+        pub fn initOk(value: ZpcToken(Tag), rest: []const u8) Self {
             return .{ .tok = .{ .ok = value }, .rest = rest };
         }
 
@@ -57,6 +57,10 @@ pub fn ZpcResult(comptime Tag: type) type {
                 .ok => |ok| ok.deinit(alloc),
                 else => {},
             }
+        }
+
+        pub fn matched(self: Self) bool {
+            return self.tok == .ok;
         }
     };
 }
@@ -134,80 +138,9 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                 try hello(&ctx, "Hell or bust"),
             );
         }
-
-        // Succeeds if there is at least one character of input. Returns the parsed character.
-        // pub fn any() Parser {
-        //     const shim = struct {
-        //         fn match(_: *Context, input: []const u8) ZpcError!Result {
-        //             if (input.len == 0)
-        //                 return .initErr(input, "end of input");
-        //             return .initOk(.{ .slice = input[0..1] }, input[1..]);
-        //         }
-        //     };
-        //     return shim.match;
-        // }
-
-        // test any {
-        //     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-        //     defer arena.deinit();
-
-        //     const anything = TZ.any();
-        //     var ctx: TestContext = .{ .allocator = arena.allocator() };
-
-        //     try expectEqualDeep(
-        //         Result.initOk(.{ .slice = "H" }, "ello, World"),
-        //         anything(&ctx, "Hello, World"),
-        //     );
-
-        //     try expectEqualDeep(
-        //         Result.initErr("", "end of input"),
-        //         anything(&ctx, ""),
-        //     );
-        // }
-
-        // Succeeds if the character is in the supplied string. Returns the parsed character.
-        // pub fn oneOf(comptime chars: []const u8) Parser {
-        //     const shim = struct {
-        //         fn match(_: *Context, input: []const u8) ZpcError!Result {
-        //             if (input.len == 0)
-        //                 return .initErr(input, "end of input");
-        //             if (!std.mem.containsAtLeastScalar(u8, chars, input[0], 1))
-        //                 return .initErr(input, "non match");
-        //             return .initOk(.{ .slice = input[0..1] }, input[1..]);
-        //         }
-        //     };
-        //     return shim.match;
-        // }
-
-        // test oneOf {
-        //     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-        //     defer arena.deinit();
-
-        //     const endLine = TZ.oneOf("\n\r");
-        //     var ctx: TestContext = .{ .allocator = arena.allocator() };
-        //     try expectEqualDeep(
-        //         Result.initOk(.{ .slice = "\n" }, "\r"),
-        //         endLine(&ctx, "\n\r"),
-        //     );
-
-        //     try expectEqualDeep(
-        //         Result.initOk(.{ .slice = "\r" }, "\n"),
-        //         endLine(&ctx, "\r\n"),
-        //     );
-
-        //     try expectEqualDeep(
-        //         Result.initErr("Hello", "non match"),
-        //         endLine(&ctx, "Hello"),
-        //     );
-        // }
     };
 }
 
 test Zpc {
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-
     _ = TZ;
-    // var ctx: C = .{ .allocator = arena.allocator() };
-    // _ = ctx;
 }
