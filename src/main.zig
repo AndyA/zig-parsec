@@ -565,15 +565,24 @@ pub const Zpc = struct {
             try peek(alloc, "AAAABC"),
         );
     }
+
+    pub fn recurse(comptime parser: *?Parser) Parser {
+        const shim = struct {
+            pub fn match(alloc: Allocator, input: []const u8) Error!Result {
+                return try parser.?(alloc, input);
+            }
+        };
+        return shim.match;
+    }
 };
 
 const number = Zpc.takeWhileMin(std.ascii.isDigit, 1);
+// const whitespace = Zpc.takeWhileMin(std.ascii.isWhitespace, 0);
 // const oper = Zpc.alt(&.{Zpc.string("+"), Zpc.string("-")});
 const nested = Zpc.right(&.{ Zpc.string("("), Zpc.left(&.{ expr, Zpc.string(")") }) });
 const expr = Zpc.alt(&.{ number, nested });
 
 test Zpc {
-    // _ = number;
     _ = expr;
 }
 
