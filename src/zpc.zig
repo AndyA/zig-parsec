@@ -11,18 +11,19 @@ pub const ZpcPred = fn (char: u8) bool;
 
 pub fn ZpcNode(comptime Tag: type) type {
     return struct {
+        const Self = @This();
         tag: Tag,
         value: union(enum) {
             nothing: void,
             slice: []const u8,
-            list: []const @This(),
+            list: []const Self,
         },
 
-        pub fn initSlice(slice: []const u8, tag: Tag) @This() {
+        pub fn initSlice(tag: Tag, slice: []const u8) Self {
             return .{ .tag = tag, .value = .{ .slice = slice } };
         }
 
-        pub fn deinit(self: @This(), alloc: Allocator) void {
+        pub fn deinit(self: Self, alloc: Allocator) void {
             switch (self.value) {
                 .list => |list| {
                     for (list) |l| l.deinit(alloc);
@@ -36,21 +37,22 @@ pub fn ZpcNode(comptime Tag: type) type {
 
 pub fn ZpcResult(comptime Tag: type) type {
     return struct {
+        const Self = @This();
         tok: union(enum) {
             ok: ZpcNode(Tag),
             fail: void,
         },
         rest: []const u8,
 
-        pub fn initFail(rest: []const u8) @This() {
+        pub fn initFail(rest: []const u8) Self {
             return .{ .tok = .{ .fail = {} }, .rest = rest };
         }
 
-        pub fn initOk(value: ZpcNode(Tag), rest: []const u8) @This() {
+        pub fn initOk(value: ZpcNode(Tag), rest: []const u8) Self {
             return .{ .tok = .{ .ok = value }, .rest = rest };
         }
 
-        pub fn deinit(self: @This(), alloc: Allocator) void {
+        pub fn deinit(self: Self, alloc: Allocator) void {
             switch (self.tok) {
                 .ok => |ok| ok.deinit(alloc),
                 else => {},
@@ -63,13 +65,22 @@ pub fn ZpcParser(comptime Context: type, comptime Tag: type) type {
     return fn (ctx: *Context, input: []const u8) ZpcError!ZpcResult(Tag);
 }
 
-const TestTag = enum { STRING };
+const TestTag = enum { HELLO };
 const TestContext = struct {
     allocator: Allocator,
     expr: *const ZpcParser(@This(), TestTag) = undefined,
 };
 
 const TZ = Zpc(TestContext, TestTag);
+
+fn checkAndConsume(
+    ctx: TestContext,
+    expected: ZpcResult(TestTag),
+    actual: ZpcResult(TestTag),
+) !void {
+    defer actual.deinit(ctx.allocator);
+    try expectEqualDeep(expected, actual);
+}
 
 pub fn Zpc(comptime Context: type, comptime Tag: type) type {
     assert(@hasField(Context, "allocator"));
@@ -89,35 +100,38 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             return shim.match;
         }
 
-        pub fn string(comptime str: []const u8, tag: Tag) Parser {
+        pub fn lit(tag: Tag, str: []const u8) Parser {
             const shim = struct {
-                fn match(_: *Context, input: []const u8) ZpcError!Result {
-                    if (input.len < str.len or !std.mem.eql(u8, input[0..str.len], str))
-                        return .initFail(input);
-                    return .initOk(.initSlice(str, tag), input[str.len..]);
+                fn litParser(_: *Context, input: []const u8) ZpcError!Result {
+                    if (input.len >= str.len and std.mem.eql(u8, input[0..str.len], str))
+                        return .initOk(.initSlice(tag, str), input[str.len..]);
+                    return .initFail(input);
                 }
             };
-            return shim.match;
+            return shim.litParser;
         }
 
-        test string {
-            const alloc = std.testing.allocator;
-            const hello = TZ.string("Hello", .STRING);
-            var ctx: TestContext = .{ .allocator = alloc };
+        test lit {
+            const hello = TZ.lit(.HELLO, "Hello");
 
-            try expectEqualDeep(
-                TZ.Result.initOk(.initSlice("Hello", .STRING), ", World"),
-                hello(&ctx, "Hello, World"),
+            var ctx: TestContext = .{ .allocator = std.testing.allocator };
+
+            try checkAndConsume(
+                ctx,
+                .initOk(.initSlice(.HELLO, "Hello"), ", World"),
+                try hello(&ctx, "Hello, World"),
             );
 
-            try expectEqualDeep(
-                TZ.Result.initFail("H"),
-                hello(&ctx, "H"),
+            try checkAndConsume(
+                ctx,
+                .initFail("H"),
+                try hello(&ctx, "H"),
             );
 
-            try expectEqualDeep(
-                TZ.Result.initFail("Hell or bust"),
-                hello(&ctx, "Hell or bust"),
+            try checkAndConsume(
+                ctx,
+                .initFail("Hell or bust"),
+                try hello(&ctx, "Hell or bust"),
             );
         }
 
