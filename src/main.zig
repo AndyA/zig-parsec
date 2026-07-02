@@ -45,7 +45,7 @@ pub const Zpc = struct {
 
     pub fn predAnd(comptime a: Pred, comptime b: Pred) Pred {
         const shim = struct {
-            pub fn op(char: u8) bool {
+            fn op(char: u8) bool {
                 return a(char) and b(char);
             }
         };
@@ -54,7 +54,7 @@ pub const Zpc = struct {
 
     pub fn predOr(comptime a: Pred, comptime b: Pred) Pred {
         const shim = struct {
-            pub fn op(char: u8) bool {
+            fn op(char: u8) bool {
                 return a(char) or b(char);
             }
         };
@@ -63,7 +63,7 @@ pub const Zpc = struct {
 
     pub fn predNot(comptime a: Pred) Pred {
         const shim = struct {
-            pub fn op(char: u8) bool {
+            fn op(char: u8) bool {
                 return !a(char);
             }
         };
@@ -72,7 +72,7 @@ pub const Zpc = struct {
 
     pub fn stringWithLabel(comptime str: []const u8, comptime err: ?[]const u8) Parser {
         const shim = struct {
-            pub fn match(_: Allocator, input: []const u8) Error!Result {
+            fn match(_: Allocator, input: []const u8) Error!Result {
                 if (input.len < str.len)
                     return .initErr(input, err orelse "end of input");
                 if (!std.mem.eql(u8, input[0..str.len], str))
@@ -112,7 +112,7 @@ pub const Zpc = struct {
     // Succeeds if there is at least one character of input. Returns the parsed character.
     pub fn anyWithLabel(comptime err: ?[]const u8) Parser {
         const shim = struct {
-            pub fn match(_: Allocator, input: []const u8) Error!Result {
+            fn match(_: Allocator, input: []const u8) Error!Result {
                 if (input.len == 0)
                     return .initErr(input, err orelse "end of input");
                 return .initOk(.{ .slice = input[0..1] }, input[1..]);
@@ -145,7 +145,7 @@ pub const Zpc = struct {
     // Succeeds if the character is in the supplied string. Returns the parsed character.
     pub fn oneOfWithLabel(comptime chars: []const u8, comptime err: ?[]const u8) Parser {
         const shim = struct {
-            pub fn match(_: Allocator, input: []const u8) Error!Result {
+            fn match(_: Allocator, input: []const u8) Error!Result {
                 if (input.len == 0)
                     return .initErr(input, err orelse "end of input");
                 if (!std.mem.containsAtLeastScalar(u8, chars, input[0], 1))
@@ -185,7 +185,7 @@ pub const Zpc = struct {
     // `alt` for "alternative" is the equivalent of Parsec `<|>`
     pub fn altWithLabel(comptime parsers: []const *const Parser, comptime err: ?[]const u8) Parser {
         const shim = struct {
-            pub fn match(alloc: Allocator, input: []const u8) Error!Result {
+            fn match(alloc: Allocator, input: []const u8) Error!Result {
                 inline for (parsers) |parser| {
                     const res = try parser(alloc, input);
                     if (res.ok) return res;
@@ -224,7 +224,7 @@ pub const Zpc = struct {
     pub fn right(comptime parsers: []const *const Parser) Parser {
         assert(parsers.len != 0);
         const shim = struct {
-            pub fn match(alloc: Allocator, input: []const u8) Error!Result {
+            fn match(alloc: Allocator, input: []const u8) Error!Result {
                 var tail = input;
                 inline for (parsers, 0..) |parser, i| {
                     const res = try parser(alloc, tail);
@@ -261,7 +261,7 @@ pub const Zpc = struct {
     pub fn left(comptime parsers: []const *const Parser) Parser {
         assert(parsers.len != 0);
         const shim = struct {
-            pub fn match(alloc: Allocator, input: []const u8) Error!Result {
+            fn match(alloc: Allocator, input: []const u8) Error!Result {
                 const res1 = try parsers[0](alloc, input);
                 if (!res1.ok) return res1;
                 var tail = res1.rest;
@@ -299,7 +299,7 @@ pub const Zpc = struct {
     // `apply` is the equivalent of Haskell's Applicative sequential application
     pub fn apply(comptime parsers: []const *const Parser) Parser {
         const shim = struct {
-            pub fn match(alloc: Allocator, input: []const u8) Error!Result {
+            fn match(alloc: Allocator, input: []const u8) Error!Result {
                 var list = try alloc.alloc(Value, parsers.len);
                 errdefer alloc.free(list);
 
@@ -345,7 +345,7 @@ pub const Zpc = struct {
 
     pub fn map(comptime parser: Parser, comptime mapper: Mapper) Parser {
         const shim = struct {
-            pub fn match(alloc: Allocator, input: []const u8) Error!Result {
+            fn match(alloc: Allocator, input: []const u8) Error!Result {
                 return try mapper(alloc, try parser(alloc, input));
             }
         };
@@ -374,7 +374,7 @@ pub const Zpc = struct {
 
     pub fn takeWhileMinWithLabel(comptime pred: Pred, comptime min: usize, comptime err: ?[]const u8) Parser {
         const shim = struct {
-            pub fn match(_: Allocator, input: []const u8) Error!Result {
+            fn match(_: Allocator, input: []const u8) Error!Result {
                 var pos: usize = 0;
                 while (pos < input.len and pred(input[pos]))
                     pos += 1;
@@ -409,7 +409,7 @@ pub const Zpc = struct {
 
     pub fn manyWithLabel(comptime parser: Parser, comptime min: usize, comptime err: ?[]const u8) Parser {
         const shim = struct {
-            pub fn match(alloc: Allocator, input: []const u8) Error!Result {
+            fn match(alloc: Allocator, input: []const u8) Error!Result {
                 var list: std.ArrayList(Value) = .empty;
                 errdefer list.deinit(alloc);
                 var tail = input;
@@ -460,7 +460,7 @@ pub const Zpc = struct {
 
     pub fn manyTill(comptime parser: Parser, comptime end_parser: Parser) Parser {
         const shim = struct {
-            pub fn match(alloc: Allocator, input: []const u8) Error!Result {
+            fn match(alloc: Allocator, input: []const u8) Error!Result {
                 var list: std.ArrayList(Value) = .empty;
                 errdefer list.deinit(alloc);
                 var tail = input;
@@ -507,7 +507,7 @@ pub const Zpc = struct {
         comptime allow_first_fail: bool,
     ) Parser {
         const shim = struct {
-            pub fn match(alloc: Allocator, input: []const u8) Error!Result {
+            fn match(alloc: Allocator, input: []const u8) Error!Result {
                 const first = try item_parser(alloc, input);
                 if (!first.ok)
                     return if (allow_first_fail)
@@ -540,7 +540,7 @@ pub const Zpc = struct {
 
     pub fn match(comptime parser: Parser) Parser {
         const shim = struct {
-            pub fn match(alloc: Allocator, input: []const u8) Error!Result {
+            fn match(alloc: Allocator, input: []const u8) Error!Result {
                 var arena = std.heap.ArenaAllocator.init(alloc);
                 defer arena.deinit();
                 const res = try parser(arena.allocator(), input);
@@ -565,15 +565,6 @@ pub const Zpc = struct {
             try peek(alloc, "AAAABC"),
         );
     }
-
-    pub fn recurse(comptime parser: *?Parser) Parser {
-        const shim = struct {
-            pub fn match(alloc: Allocator, input: []const u8) Error!Result {
-                return try parser.?(alloc, input);
-            }
-        };
-        return shim.match;
-    }
 };
 
 const number = Zpc.takeWhileMin(std.ascii.isDigit, 1);
@@ -583,7 +574,9 @@ const nested = Zpc.right(&.{ Zpc.string("("), Zpc.left(&.{ expr, Zpc.string(")")
 const expr = Zpc.alt(&.{ number, nested });
 
 test Zpc {
-    _ = expr;
+    _ = number;
+    // _ = expr;
+    _ = @import("zpc.zig");
 }
 
 pub fn main() void {
