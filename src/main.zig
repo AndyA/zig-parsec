@@ -94,17 +94,17 @@ pub const Zpc = struct {
 
         const hello = Zpc.string("Hello");
         try expectEqualDeep(
-            Zpc.Result.initOk(.{ .slice = "Hello" }, ", World"),
+            Result.initOk(.{ .slice = "Hello" }, ", World"),
             hello(alloc, "Hello, World"),
         );
 
         try expectEqualDeep(
-            Zpc.Result.initErr("H", "end of input"),
+            Result.initErr("H", "end of input"),
             hello(alloc, "H"),
         );
 
         try expectEqualDeep(
-            Zpc.Result.initErr("Hell or bust", "non match"),
+            Result.initErr("Hell or bust", "non match"),
             hello(alloc, "Hell or bust"),
         );
     }
@@ -132,12 +132,12 @@ pub const Zpc = struct {
 
         const anything = Zpc.any();
         try expectEqualDeep(
-            Zpc.Result.initOk(.{ .slice = "H" }, "ello, World"),
+            Result.initOk(.{ .slice = "H" }, "ello, World"),
             anything(alloc, "Hello, World"),
         );
 
         try expectEqualDeep(
-            Zpc.Result.initErr("", "end of input"),
+            Result.initErr("", "end of input"),
             anything(alloc, ""),
         );
     }
@@ -167,17 +167,17 @@ pub const Zpc = struct {
 
         const endLine = Zpc.oneOf("\n\r");
         try expectEqualDeep(
-            Zpc.Result.initOk(.{ .slice = "\n" }, "\r"),
+            Result.initOk(.{ .slice = "\n" }, "\r"),
             endLine(alloc, "\n\r"),
         );
 
         try expectEqualDeep(
-            Zpc.Result.initOk(.{ .slice = "\r" }, "\n"),
+            Result.initOk(.{ .slice = "\r" }, "\n"),
             endLine(alloc, "\r\n"),
         );
 
         try expectEqualDeep(
-            Zpc.Result.initErr("Hello", "non match"),
+            Result.initErr("Hello", "non match"),
             endLine(alloc, "Hello"),
         );
     }
@@ -207,15 +207,15 @@ pub const Zpc = struct {
 
         const fooOrHello = Zpc.alt(&.{ Zpc.string("Foo"), Zpc.string("Hello") });
         try expectEqualDeep(
-            Zpc.Result.initOk(.{ .slice = "Hello" }, ", World"),
+            Result.initOk(.{ .slice = "Hello" }, ", World"),
             fooOrHello(alloc, "Hello, World"),
         );
         try expectEqualDeep(
-            Zpc.Result.initOk(.{ .slice = "Foo" }, "Bar"),
+            Result.initOk(.{ .slice = "Foo" }, "Bar"),
             fooOrHello(alloc, "FooBar"),
         );
         try expectEqualDeep(
-            Zpc.Result.initErr("Bar", "non match"),
+            Result.initErr("Bar", "non match"),
             fooOrHello(alloc, "Bar"),
         );
     }
@@ -245,14 +245,14 @@ pub const Zpc = struct {
         const seq = Zpc.right(&.{ Zpc.string("A"), Zpc.string("B"), Zpc.string("C") });
 
         try expectEqualDeep(
-            Zpc.Result.initOk(.{ .slice = "C" }, "D"),
+            Result.initOk(.{ .slice = "C" }, "D"),
             seq(alloc, "ABCD"),
         );
 
         // TODO is it desirable that input before the match failure is lost
         // in this case?
         try expectEqualDeep(
-            Zpc.Result.initErr("ED", "non match"),
+            Result.initErr("ED", "non match"),
             seq(alloc, "ABED"),
         );
     }
@@ -284,14 +284,14 @@ pub const Zpc = struct {
         const seq = Zpc.left(&.{ Zpc.string("A"), Zpc.string("B"), Zpc.string("C") });
 
         try expectEqualDeep(
-            Zpc.Result.initOk(.{ .slice = "A" }, "D"),
+            Result.initOk(.{ .slice = "A" }, "D"),
             seq(alloc, "ABCD"),
         );
 
         // TODO is it desirable that input before the match failure is lost
         // in this case?
         try expectEqualDeep(
-            Zpc.Result.initErr("ED", "non match"),
+            Result.initErr("ED", "non match"),
             seq(alloc, "ABED"),
         );
     }
@@ -327,7 +327,7 @@ pub const Zpc = struct {
         const seq = Zpc.apply(&.{ Zpc.string("A"), Zpc.string("B"), Zpc.string("C") });
 
         try expectEqualDeep(
-            Zpc.Result.initOk(.{ .list = &.{
+            Result.initOk(.{ .list = &.{
                 .{ .slice = "A" },
                 .{ .slice = "B" },
                 .{ .slice = "C" },
@@ -338,7 +338,7 @@ pub const Zpc = struct {
         // TODO is it desirable that input before the match failure is lost
         // in this case?
         try expectEqualDeep(
-            Zpc.Result.initErr("ED", "non match"),
+            Result.initErr("ED", "non match"),
             seq(alloc, "ABED"),
         );
     }
@@ -367,7 +367,7 @@ pub const Zpc = struct {
         const mapped = Zpc.map(Zpc.string("Hello"), M.mapper);
 
         try expectEqualDeep(
-            Zpc.Result.initErr(", World", "no problem"),
+            Result.initErr(", World", "no problem"),
             mapped(alloc, "Hello, World"),
         );
     }
@@ -397,12 +397,12 @@ pub const Zpc = struct {
 
         const digits = Zpc.takeWhileMin(std.ascii.isDigit, 1);
         try expectEqualDeep(
-            Zpc.Result.initOk(.{ .slice = "10" }, ".3"),
+            Result.initOk(.{ .slice = "10" }, ".3"),
             digits(alloc, "10.3"),
         );
 
         try expectEqualDeep(
-            Zpc.Result.initErr("Hello", "too few"),
+            Result.initErr("Hello", "too few"),
             digits(alloc, "Hello"),
         );
     }
@@ -444,12 +444,12 @@ pub const Zpc = struct {
 
         const zeroOrMore = Zpc.many(Zpc.string("ABC"), 0);
         try expectEqualDeep(
-            Zpc.Result.initOk(.{ .list = &.{} }, ""),
+            Result.initOk(.{ .list = &.{} }, ""),
             try zeroOrMore(alloc, ""),
         );
 
         try expectEqualDeep(
-            Zpc.Result.initOk(.{ .list = &.{
+            Result.initOk(.{ .list = &.{
                 .{ .slice = "ABC" },
                 .{ .slice = "ABC" },
                 .{ .slice = "ABC" },
@@ -492,7 +492,7 @@ pub const Zpc = struct {
         const aNotAb = Zpc.manyTill(Zpc.string("A"), Zpc.string("AB"));
 
         try expectEqualDeep(
-            Zpc.Result.initOk(.{ .list = &.{
+            Result.initOk(.{ .list = &.{
                 .{ .slice = "A" },
                 .{ .slice = "A" },
                 .{ .slice = "A" },
@@ -510,7 +510,10 @@ pub const Zpc = struct {
             pub fn match(alloc: Allocator, input: []const u8) Error!Result {
                 const first = try item_parser(alloc, input);
                 if (!first.ok)
-                    return if (allow_first_fail) .initOk(.{ .list = &.{} }, input) else .initErr(input, "too few");
+                    return if (allow_first_fail)
+                        .initOk(.{ .list = &.{} }, input)
+                    else
+                        .initErr(input, "too few");
 
                 var list: std.ArrayList(Value) = .empty;
                 errdefer list.deinit(alloc);
@@ -558,15 +561,20 @@ pub const Zpc = struct {
         const peek = Zpc.match(aNotAb);
 
         try expectEqualDeep(
-            Zpc.Result.initOk(.{ .slice = "AAAAB" }, "C"),
+            Result.initOk(.{ .slice = "AAAAB" }, "C"),
             try peek(alloc, "AAAABC"),
         );
     }
 };
 
-test {
-    const foo = Zpc.string("foo");
-    _ = foo;
+const number = Zpc.takeWhileMin(std.ascii.isDigit, 1);
+// const oper = Zpc.alt(&.{Zpc.string("+"), Zpc.string("-")});
+const nested = Zpc.right(&.{ Zpc.string("("), Zpc.left(&.{ expr, Zpc.string(")") }) });
+const expr = Zpc.alt(&.{ number, nested });
+
+test Zpc {
+    // _ = number;
+    _ = expr;
 }
 
 pub fn main() void {
