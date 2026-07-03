@@ -690,6 +690,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                 try parseExpr(&ctx, "123;"),
             );
 
+            const expr = "(123+7)-2+700;";
             const want: Result = .initOk(.initList(.TERM, &.{
                 .initList(.NEST, &.{
                     .initList(.TERM, &.{
@@ -713,8 +714,6 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                     }),
                 }),
             }), ";");
-
-            const expr = "(123+7)-2+700;";
 
             if (false) {
                 const res = try parseExpr(&ctx, expr);
