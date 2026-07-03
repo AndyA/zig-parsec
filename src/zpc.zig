@@ -126,7 +126,8 @@ pub fn ZpcParser(comptime Context: type, comptime Tag: type) type {
 }
 
 const TestTag = enum {
-    NOP,
+    // Don't call it NOP so we don't use it by mistake.
+    NOT_NOP,
     HELLO,
     FOO,
     BAR,
@@ -216,6 +217,9 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
         pub const Mapper = fn (ctx: *Context, result: Result) ZpcError!Result;
 
         pub const ManyOptions = struct {
+            const zeroOrMore: @This() = .{};
+            const oneOrMore: @This() = .{ .min = 1 };
+
             min: usize = 0,
             max: usize = std.math.maxInt(usize),
         };
@@ -275,12 +279,12 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             );
         }
 
-        pub fn someAre(tag: Tag, pred: Predicate, options: ManyOptions) Parser {
+        pub fn takeWhile(tag: Tag, options: ManyOptions, pred: Predicate) Parser {
             assert(options.min <= options.max);
             const shim = struct {
                 fn someAreParser(_: *Context, input: []const u8) ZpcError!Result {
-                    var pos: usize = 0;
                     const len = @min(input.len, options.max);
+                    var pos: usize = 0;
                     while (pos < len and pred(input[pos]))
                         pos += 1;
                     if (pos < options.min)
@@ -291,11 +295,11 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             return shim.someAreParser;
         }
 
-        test someAre {
-            const parseDigits = someAre(
+        test takeWhile {
+            const parseDigits = takeWhile(
                 .DIGIT,
-                std.ascii.isDigit,
                 .{ .min = 1, .max = 2 },
+                std.ascii.isDigit,
             );
             var ctx: TestContext = .{ .allocator = std.testing.allocator };
 
@@ -390,8 +394,8 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
 
         test seq {
             const parseAlphaNum = seq(.MULTI, &.{
-                someAre(.DIGIT, std.ascii.isDigit, .{ .min = 1 }),
-                someAre(.ALPHA, std.ascii.isAlphabetic, .{ .min = 1 }),
+                takeWhile(.DIGIT, .oneOrMore, std.ascii.isDigit),
+                takeWhile(.ALPHA, .oneOrMore, std.ascii.isAlphabetic),
             });
             var ctx: TestContext = .{ .allocator = std.testing.allocator };
 
@@ -489,7 +493,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             );
         }
 
-        pub fn many(tag: Tag, parser: Parser, options: ManyOptions) Parser {
+        pub fn many(tag: Tag, options: ManyOptions, parser: Parser) Parser {
             assert(options.min <= options.max);
             const shim = struct {
                 fn manyParser(ctx: *Context, input: []const u8) ZpcError!Result {
@@ -518,8 +522,8 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
         test many {
             const parseFooBar = many(
                 .MULTI,
-                alt(&.{ lit(.FOO, "Foo"), lit(.BAR, "Bar") }),
                 .{ .min = 2, .max = 3 },
+                alt(&.{ lit(.FOO, "Foo"), lit(.BAR, "Bar") }),
             );
             var ctx: TestContext = .{ .allocator = std.testing.allocator };
 
@@ -563,7 +567,11 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
         }
 
         test optional {
-            const parseMaybeNumber = optional(someAre(.DIGIT, std.ascii.isDigit, .{ .min = 1 }));
+            const parseMaybeNumber = optional(takeWhile(
+                .DIGIT,
+                .oneOrMore,
+                std.ascii.isDigit,
+            ));
             var ctx: TestContext = .{ .allocator = std.testing.allocator };
 
             try checkAndConsume(
@@ -645,20 +653,24 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
         }
 
         test recurse {
-            const parseDigits = someAre(.DIGIT, std.ascii.isDigit, .{ .min = 1 });
+            const parseDigits = takeWhile(.DIGIT, .oneOrMore, std.ascii.isDigit);
 
             const parseAtom = alt(&.{
-                seq(.NEST, &.{ discard(lit(.OPEN, "(")), recurse("expr"), discard(lit(.CLOSE, ")")) }),
+                seq(.NEST, &.{
+                    discard(lit(.OPEN, "(")),
+                    recurse("expr"),
+                    discard(lit(.CLOSE, ")")),
+                }),
                 parseDigits,
             });
 
             const parseTerm =
                 seq(.TERM, &.{
                     parseAtom,
-                    many(.MANY, seq(.SEQ, &.{
+                    many(.MANY, .zeroOrMore, seq(.SEQ, &.{
                         alt(&.{ lit(.PLUS, "+"), lit(.MINUS, "-") }),
                         parseAtom,
-                    }), .{}),
+                    })),
                 });
 
             const parseExpr = parseTerm;
