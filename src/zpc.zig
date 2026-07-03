@@ -12,6 +12,8 @@ pub const ZpcPred = fn (char: u8) bool;
 pub fn ZpcToken(comptime Tag: type) type {
     return struct {
         const Self = @This();
+        pub const List = std.ArrayList(Self);
+
         tag: Tag,
         value: union(enum) {
             nothing: void,
@@ -26,11 +28,16 @@ pub fn ZpcToken(comptime Tag: type) type {
         pub fn deinit(self: Self, alloc: Allocator) void {
             switch (self.value) {
                 .list => |list| {
-                    for (list) |l| l.deinit(alloc);
+                    for (list) |item| item.deinit(alloc);
                     alloc.free(list);
                 },
                 else => {},
             }
+        }
+
+        pub fn deinitList(list: List, alloc: Allocator) void {
+            for (list.items) |item| item.deinit(alloc);
+            list.deinit(alloc);
         }
     };
 }
@@ -69,7 +76,8 @@ pub fn ZpcParser(comptime Context: type, comptime Tag: type) type {
     return fn (ctx: *Context, input: []const u8) ZpcError!ZpcResult(Tag);
 }
 
-const TestTag = enum { HELLO };
+const TestTag = enum { HELLO, FOO };
+
 const TestContext = struct {
     allocator: Allocator,
     expr: *const ZpcParser(@This(), TestTag) = undefined,
@@ -89,6 +97,7 @@ fn checkAndConsume(
 pub fn Zpc(comptime Context: type, comptime Tag: type) type {
     assert(@hasField(Context, "allocator"));
     return struct {
+        pub const Token = ZpcToken(Tag);
         pub const Result = ZpcResult(Tag);
         pub const Parser = ZpcParser(Context, Tag);
         pub const Mapper = fn (ctx: *Context, result: Result) ZpcError!Result;
@@ -136,6 +145,48 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                 ctx,
                 .initFail("Hell or bust"),
                 try hello(&ctx, "Hell or bust"),
+            );
+        }
+
+        pub fn alt(parsers: []const *const Parser) Parser {
+            const shim = struct {
+                fn altParser(ctx: *Context, input: []const u8) ZpcError!Result {
+                    inline for (parsers) |parser| {
+                        const res = try parser(ctx, input);
+                        if (res.matched())
+                            return res;
+                    }
+
+                    return .initFail(input);
+                }
+            };
+            return shim.altParser;
+        }
+
+        test alt {
+            const oneOf = TZ.alt(&.{
+                TZ.lit(.HELLO, "Hello"),
+                TZ.lit(.FOO, "Foo"),
+            });
+
+            var ctx: TestContext = .{ .allocator = std.testing.allocator };
+
+            try checkAndConsume(
+                ctx,
+                .initOk(.initSlice(.HELLO, "Hello"), ", World"),
+                try oneOf(&ctx, "Hello, World"),
+            );
+
+            try checkAndConsume(
+                ctx,
+                .initOk(.initSlice(.FOO, "Foo"), "Bar"),
+                try oneOf(&ctx, "FooBar"),
+            );
+
+            try checkAndConsume(
+                ctx,
+                .initFail("Hell or bust"),
+                try oneOf(&ctx, "Hell or bust"),
             );
         }
     };
