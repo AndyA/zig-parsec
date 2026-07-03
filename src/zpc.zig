@@ -235,7 +235,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             return shim.litParser;
         }
 
-        pub fn lit(str: []const u8) Parser {
+        pub fn literal(str: []const u8) Parser {
             return keyword(Token.NOP, str);
         }
 
@@ -665,7 +665,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             const parseDigits = takeWhile(.DIGIT, .oneOrMore, std.ascii.isDigit);
 
             const parseAtom = alt(&.{
-                between(lit("("), recurse("expr"), lit(")")),
+                between(literal("("), recurse("expr"), literal(")")),
                 parseDigits,
             });
 
