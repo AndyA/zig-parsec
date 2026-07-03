@@ -12,7 +12,7 @@ pub const ZpcPred = fn (char: u8) bool;
 pub fn ZpcToken(comptime Tag: type) type {
     return struct {
         const Self = @This();
-        pub const List = std.ArrayList(Self);
+        pub const ArrayList = std.ArrayList(Self);
 
         tag: Tag,
         value: union(enum) {
@@ -25,6 +25,15 @@ pub fn ZpcToken(comptime Tag: type) type {
             return .{ .tag = tag, .value = .{ .slice = slice } };
         }
 
+        pub fn initList(tag: Tag, list: []const Self) Self {
+            return .{ .tag = tag, .value = .{ .list = list } };
+        }
+
+        pub fn initArrayList(alloc: Allocator, tag: Tag, array: *ArrayList) ZpcError!Self {
+            const list = try array.toOwnedSlice(alloc);
+            return initList(tag, list);
+        }
+
         pub fn deinit(self: Self, alloc: Allocator) void {
             switch (self.value) {
                 .list => |list| {
@@ -35,7 +44,7 @@ pub fn ZpcToken(comptime Tag: type) type {
             }
         }
 
-        pub fn deinitList(list: List, alloc: Allocator) void {
+        pub fn deinitList(list: *ArrayList, alloc: Allocator) void {
             for (list.items) |item| item.deinit(alloc);
             list.deinit(alloc);
         }
@@ -76,7 +85,7 @@ pub fn ZpcParser(comptime Context: type, comptime Tag: type) type {
     return fn (ctx: *Context, input: []const u8) ZpcError!ZpcResult(Tag);
 }
 
-const TestTag = enum { HELLO, FOO, BAR, NEWLINE, DIGIT };
+const TestTag = enum { HELLO, FOO, BAR, NEWLINE, DIGIT, MULTI };
 
 const TestContext = struct {
     allocator: Allocator,
@@ -368,6 +377,52 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                 ctx,
                 .initFail("BarFoo"),
                 try parseRight(&ctx, "BarFoo"),
+            );
+        }
+
+        pub fn many(tag: Tag, parser: Parser, min: usize) Parser {
+            const shim = struct {
+                fn manyParser(ctx: *Context, input: []const u8) ZpcError!Result {
+                    var list: Token.ArrayList = .empty;
+                    errdefer Token.deinitList(&list, ctx.allocator);
+                    var tail = input;
+                    while (true) {
+                        const res = try parser(ctx, tail);
+                        if (!res.matched()) break;
+                        try list.append(ctx.allocator, res.tok.ok);
+                        tail = res.rest;
+                    }
+
+                    if (list.items.len < min) {
+                        Token.deinitList(&list, ctx.allocator);
+                        return .initFail(input);
+                    }
+
+                    return .initOk(try .initArrayList(ctx.allocator, tag, &list), tail);
+                }
+            };
+            return shim.manyParser;
+        }
+
+        test many {
+            const parseFooBar = many(.MULTI, alt(&.{ lit(.FOO, "Foo"), lit(.BAR, "Bar") }), 2);
+            var ctx: TestContext = .{ .allocator = std.testing.allocator };
+
+            try checkAndConsume(
+                ctx,
+                .initOk(.initList(.MULTI, &.{
+                    .initSlice(.FOO, "Foo"),
+                    .initSlice(.FOO, "Foo"),
+                    .initSlice(.BAR, "Bar"),
+                }), "Baz"),
+                try parseFooBar(&ctx, "FooFooBarBaz"),
+            );
+
+            // We need two or more so a single Foo shouldn't be consumed.
+            try checkAndConsume(
+                ctx,
+                .initFail("Foo"),
+                try parseFooBar(&ctx, "Foo"),
             );
         }
 
