@@ -15,6 +15,8 @@ pub fn ZpcToken(comptime Tag: type) type {
         pub const ArrayList = std.ArrayList(Self);
         pub const NOP: Tag = @enumFromInt(0);
 
+        pub const nothing: Self = .{ .tag = NOP, .value = .{ .nothing = {} } };
+
         tag: Tag = NOP,
         value: union(enum) {
             nothing: void,
@@ -33,10 +35,6 @@ pub fn ZpcToken(comptime Tag: type) type {
                     try writer.print(" )", .{});
                 },
             }
-        }
-
-        pub fn initNothing(tag: Tag) Self {
-            return .{ .tag = tag, .value = .{ .nothing = {} } };
         }
 
         pub fn initSlice(tag: Tag, slice: []const u8) Self {
@@ -253,22 +251,22 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             );
         }
 
-        pub fn always(tag: Tag) Parser {
+        pub fn always() Parser {
             const shim = struct {
                 fn alwaysParser(_: *Context, input: []const u8) ZpcError!Result {
-                    return .initOk(.initNothing(tag), input);
+                    return .initOk(.nothing, input);
                 }
             };
             return shim.alwaysParser;
         }
 
         test always {
-            const parseAlways = always(.FOO);
+            const parseAlways = always();
             var ctx: TestContext = .{ .allocator = std.testing.allocator };
 
             try checkAndConsume(
                 ctx,
-                .initOk(.initNothing(.FOO), "Hello, World"),
+                .initOk(.nothing, "Hello, World"),
                 try parseAlways(&ctx, "Hello, World"),
             );
         }
@@ -581,7 +579,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                 fn optionalParser(ctx: *Context, input: []const u8) ZpcError!Result {
                     const res = try parser(ctx, input);
                     if (res.matched()) return res;
-                    return .initOk(.initNothing(.NOP), input);
+                    return .initOk(.nothing, input);
                 }
             };
             return shim.optionalParser;
@@ -599,7 +597,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
 
             try checkAndConsume(
                 ctx,
-                .initOk(.initNothing(.NOP), "Foo"),
+                .initOk(.nothing, "Foo"),
                 try parseMaybeNumber(&ctx, "Foo"),
             );
         }
@@ -613,7 +611,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                     tmp_ctx.allocator = arena.allocator();
                     const res = try parser(&tmp_ctx, input);
                     return if (res.matched())
-                        .initOk(.initNothing(Token.NOP), res.rest)
+                        .initOk(.nothing, res.rest)
                     else
                         .initFail(input);
                 }
@@ -628,7 +626,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
 
             try checkAndConsume(
                 ctx,
-                .initOk(.initNothing(.NOP), ", World"),
+                .initOk(.nothing, ", World"),
                 try parseHello(&ctx, "Hello, World"),
             );
 
