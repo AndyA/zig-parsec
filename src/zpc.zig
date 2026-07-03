@@ -21,6 +21,23 @@ pub fn ZpcToken(comptime Tag: type) type {
             list: []const Self,
         },
 
+        pub fn format(self: Self, writer: *Io.Writer) Io.Writer.Error!void {
+            try writer.print("{s} {s}", .{ @tagName(self.tag), @tagName(self.value) });
+            switch (self.value) {
+                .nothing => {},
+                .slice => |slice| try writer.print(" \"{s}\"", .{slice}),
+                .list => |list| {
+                    try writer.print("(", .{});
+                    for (list) |item| try writer.print(" {f}", .{item});
+                    try writer.print(" )", .{});
+                },
+            }
+        }
+
+        pub fn initNothing(tag: Tag) Self {
+            return .{ .tag = tag, .value = .{ .nothing = {} } };
+        }
+
         pub fn initSlice(tag: Tag, slice: []const u8) Self {
             return .{ .tag = tag, .value = .{ .slice = slice } };
         }
@@ -36,15 +53,17 @@ pub fn ZpcToken(comptime Tag: type) type {
 
         pub fn deinit(self: Self, alloc: Allocator) void {
             switch (self.value) {
-                .list => |list| {
-                    for (list) |item| item.deinit(alloc);
-                    alloc.free(list);
-                },
+                .list => |list| deinitList(list, alloc),
                 else => {},
             }
         }
 
-        pub fn deinitList(list: *ArrayList, alloc: Allocator) void {
+        pub fn deinitList(list: []const Self, alloc: Allocator) void {
+            for (list) |item| item.deinit(alloc);
+            alloc.free(list);
+        }
+
+        pub fn deinitArrayList(list: *ArrayList, alloc: Allocator) void {
             for (list.items) |item| item.deinit(alloc);
             list.deinit(alloc);
         }
@@ -59,6 +78,17 @@ pub fn ZpcResult(comptime Tag: type) type {
             fail: void,
         },
         rest: []const u8,
+
+        pub fn format(self: Self, writer: *Io.Writer) Io.Writer.Error!void {
+            switch (self.tok) {
+                .ok => |ok| try writer.print("{f}", .{ok}),
+                .fail => try writer.print("FAIL", .{}),
+            }
+            if (self.rest.len > 10)
+                try writer.print(" rest: \"{s}...\"", .{self.rest[0..10]})
+            else
+                try writer.print(" rest: \"{s}\"", .{self.rest});
+        }
 
         pub fn initFail(rest: []const u8) Self {
             return .{ .tok = .{ .fail = {} }, .rest = rest };
@@ -85,7 +115,15 @@ pub fn ZpcParser(comptime Context: type, comptime Tag: type) type {
     return fn (ctx: *Context, input: []const u8) ZpcError!ZpcResult(Tag);
 }
 
-const TestTag = enum { HELLO, FOO, BAR, NEWLINE, DIGIT, MULTI };
+const TestTag = enum {
+    HELLO,
+    FOO,
+    BAR,
+    NEWLINE,
+    DIGIT,
+    ALPHA,
+    MULTI,
+};
 
 const TestContext = struct {
     allocator: Allocator,
@@ -181,6 +219,26 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                 ctx,
                 .initFail("Hell or bust"),
                 try parseHello(&ctx, "Hell or bust"),
+            );
+        }
+
+        pub fn always(tag: Tag) Parser {
+            const shim = struct {
+                fn alwaysParser(_: *Context, input: []const u8) ZpcError!Result {
+                    return .initOk(.initNothing(tag), input);
+                }
+            };
+            return shim.alwaysParser;
+        }
+
+        test always {
+            const parseAlways = always(.FOO);
+            var ctx: TestContext = .{ .allocator = std.testing.allocator };
+
+            try checkAndConsume(
+                ctx,
+                .initOk(.initNothing(.FOO), "Hello, World"),
+                try parseAlways(&ctx, "Hello, World"),
             );
         }
 
@@ -297,6 +355,46 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             );
         }
 
+        pub fn seq(tag: Tag, parsers: []const *const Parser) Parser {
+            const shim = struct {
+                fn seqParser(ctx: *Context, input: []const u8) ZpcError!Result {
+                    var list: Token.ArrayList = try .initCapacity(ctx.allocator, parsers.len);
+                    errdefer Token.deinitArrayList(&list, ctx.allocator);
+                    var tail = input;
+                    inline for (parsers) |parser| {
+                        const res = try parser(ctx, tail);
+                        if (!res.matched()) {
+                            Token.deinitArrayList(&list, ctx.allocator);
+                            return .initFail(input);
+                        }
+                        list.appendAssumeCapacity(res.tok.ok);
+                        tail = res.rest;
+                    }
+
+                    return .initOk(try .initArrayList(ctx.allocator, tag, &list), tail);
+                }
+            };
+            return shim.seqParser;
+        }
+
+        test seq {
+            const parseAlphaNum = seq(.MULTI, &.{
+                someAre(.DIGIT, std.ascii.isDigit, 1),
+                someAre(.ALPHA, std.ascii.isAlphabetic, 1),
+            });
+            var ctx: TestContext = .{ .allocator = std.testing.allocator };
+
+            try checkAndConsume(
+                ctx,
+                .initOk(.initList(.MULTI, &.{
+                    .initSlice(.DIGIT, "123"),
+                    .initSlice(.ALPHA, "ABC"),
+                }), "."),
+
+                try parseAlphaNum(&ctx, "123ABC."),
+            );
+        }
+
         pub fn left(lp: Parser, rp: Parser) Parser {
             const shim = struct {
                 fn leftParser(ctx: *Context, input: []const u8) ZpcError!Result {
@@ -384,7 +482,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             const shim = struct {
                 fn manyParser(ctx: *Context, input: []const u8) ZpcError!Result {
                     var list: Token.ArrayList = .empty;
-                    errdefer Token.deinitList(&list, ctx.allocator);
+                    errdefer Token.deinitArrayList(&list, ctx.allocator);
                     var tail = input;
                     while (true) {
                         const res = try parser(ctx, tail);
@@ -394,7 +492,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                     }
 
                     if (list.items.len < min) {
-                        Token.deinitList(&list, ctx.allocator);
+                        Token.deinitArrayList(&list, ctx.allocator);
                         return .initFail(input);
                     }
 
@@ -426,8 +524,40 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             );
         }
 
+        pub fn discard(tag: Tag, parser: Parser) Parser {
+            const shim = struct {
+                fn discardParser(ctx: *Context, input: []const u8) ZpcError!Result {
+                    const res = try parser(ctx, input);
+                    defer res.deinit(ctx.allocator);
+                    return if (res.matched())
+                        .initOk(.initNothing(tag), res.rest)
+                    else
+                        .initFail(res.rest);
+                }
+            };
+            return shim.discardParser;
+        }
+
+        test discard {
+            const parseHello = discard(.FOO, lit(.HELLO, "Hello"));
+
+            var ctx: TestContext = .{ .allocator = std.testing.allocator };
+
+            try checkAndConsume(
+                ctx,
+                .initOk(.initNothing(.FOO), ", World"),
+                try parseHello(&ctx, "Hello, World"),
+            );
+
+            try checkAndConsume(
+                ctx,
+                .initFail("H"),
+                try parseHello(&ctx, "H"),
+            );
+        }
+
         // Call a parser that is pointed to by a field on the context.
-        pub fn recurse(comptime field_name: []const u8) Parser {
+        pub fn recurse(field_name: []const u8) Parser {
             const shim = struct {
                 fn match(ctx: *Context, input: []const u8) ZpcError!Result {
                     const parser = @field(Context, field_name);
