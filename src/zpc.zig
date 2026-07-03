@@ -76,7 +76,7 @@ pub fn ZpcParser(comptime Context: type, comptime Tag: type) type {
     return fn (ctx: *Context, input: []const u8) ZpcError!ZpcResult(Tag);
 }
 
-const TestTag = enum { HELLO, FOO, BAR, NEWLINE };
+const TestTag = enum { HELLO, FOO, BAR, NEWLINE, DIGIT };
 
 const TestContext = struct {
     allocator: Allocator,
@@ -94,6 +94,44 @@ fn checkAndConsume(
     try expectEqualDeep(expected, actual);
 }
 
+pub const Predicate = fn (char: u8) bool;
+
+pub fn predAnd(a: Predicate, b: Predicate) Predicate {
+    const shim = struct {
+        fn pred(char: u8) bool {
+            return a(char) and b(char);
+        }
+    };
+    return shim.pred;
+}
+
+pub fn predOr(a: Predicate, b: Predicate) Predicate {
+    const shim = struct {
+        fn pred(char: u8) bool {
+            return a(char) or b(char);
+        }
+    };
+    return shim.pred;
+}
+
+pub fn predNot(p: Predicate) Predicate {
+    const shim = struct {
+        fn pred(char: u8) bool {
+            return !p(char);
+        }
+    };
+    return shim.pred;
+}
+
+pub fn predSet(chars: []const u8) Predicate {
+    const shim = struct {
+        fn pred(char: u8) bool {
+            return std.mem.containsAtLeastScalar(u8, chars, char, 1);
+        }
+    };
+    return shim.pred;
+}
+
 pub fn Zpc(comptime Context: type, comptime Tag: type) type {
     assert(@hasField(Context, "allocator"));
     return struct {
@@ -101,17 +139,6 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
         pub const Result = ZpcResult(Tag);
         pub const Parser = ZpcParser(Context, Tag);
         pub const Mapper = fn (ctx: *Context, result: Result) ZpcError!Result;
-
-        // Call a parser that is pointed to by a field on the context.
-        pub fn recurse(comptime field_name: []const u8) Parser {
-            const shim = struct {
-                fn match(ctx: *Context, input: []const u8) ZpcError!Result {
-                    const parser = @field(Context, field_name);
-                    return parser(ctx, input);
-                }
-            };
-            return shim.match;
-        }
 
         pub fn lit(tag: Tag, str: []const u8) Parser {
             const shim = struct {
@@ -148,37 +175,74 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             );
         }
 
-        pub fn oneOf(tag: Tag, chars: []const u8) Parser {
+        pub fn oneIs(tag: Tag, pred: Predicate) Parser {
             const shim = struct {
-                fn oneOfParser(_: *Context, input: []const u8) ZpcError!Result {
-                    if (input.len > 0 and std.mem.containsAtLeastScalar(u8, chars, input[0], 1))
+                fn oneIsParser(_: *Context, input: []const u8) ZpcError!Result {
+                    if (input.len > 0 and pred(input[0]))
                         return .initOk(.initSlice(tag, input[0..1]), input[1..]);
                     return .initFail(input);
                 }
             };
-            return shim.oneOfParser;
+            return shim.oneIsParser;
         }
 
-        test oneOf {
-            const parseNewline = oneOf(.NEWLINE, "\n\r");
+        test oneIs {
+            const parseDigit = oneIs(.DIGIT, std.ascii.isDigit);
             var ctx: TestContext = .{ .allocator = std.testing.allocator };
 
             try checkAndConsume(
                 ctx,
-                .initOk(.initSlice(.NEWLINE, "\n"), "\r"),
-                try parseNewline(&ctx, "\n\r"),
+                .initOk(.initSlice(.DIGIT, "6"), "7"),
+                try parseDigit(&ctx, "67"),
             );
 
             try checkAndConsume(
                 ctx,
-                .initOk(.initSlice(.NEWLINE, "\r"), "\n"),
-                try parseNewline(&ctx, "\r\n"),
+                .initFail(""),
+                try parseDigit(&ctx, ""),
             );
 
             try checkAndConsume(
                 ctx,
                 .initFail("X"),
-                try parseNewline(&ctx, "X"),
+                try parseDigit(&ctx, "X"),
+            );
+        }
+
+        pub fn someAre(tag: Tag, pred: Predicate, min: usize) Parser {
+            const shim = struct {
+                fn someAreParser(_: *Context, input: []const u8) ZpcError!Result {
+                    var pos: usize = 0;
+                    while (pos < input.len and pred(input[pos]))
+                        pos += 1;
+                    if (pos < min)
+                        return .initFail(input);
+                    return .initOk(.initSlice(tag, input[0..pos]), input[pos..]);
+                }
+            };
+            return shim.someAreParser;
+        }
+
+        test someAre {
+            const parseDigits = someAre(.DIGIT, std.ascii.isDigit, 1);
+            var ctx: TestContext = .{ .allocator = std.testing.allocator };
+
+            try checkAndConsume(
+                ctx,
+                .initOk(.initSlice(.DIGIT, "67"), "b"),
+                try parseDigits(&ctx, "67b"),
+            );
+
+            try checkAndConsume(
+                ctx,
+                .initOk(.initSlice(.DIGIT, "67"), ""),
+                try parseDigits(&ctx, "67"),
+            );
+
+            try checkAndConsume(
+                ctx,
+                .initFail("X"),
+                try parseDigits(&ctx, "X"),
             );
         }
 
@@ -305,6 +369,17 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                 .initFail("BarFoo"),
                 try parseRight(&ctx, "BarFoo"),
             );
+        }
+
+        // Call a parser that is pointed to by a field on the context.
+        pub fn recurse(comptime field_name: []const u8) Parser {
+            const shim = struct {
+                fn match(ctx: *Context, input: []const u8) ZpcError!Result {
+                    const parser = @field(Context, field_name);
+                    return parser(ctx, input);
+                }
+            };
+            return shim.match;
         }
     };
 }
