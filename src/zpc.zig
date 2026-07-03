@@ -143,6 +143,7 @@ const TestTag = enum {
     NEST,
     TERM,
     MANY,
+    ALNUM,
 };
 
 const TestContext = struct {
@@ -650,15 +651,28 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             return shim.matchParser;
         }
 
+        test match {
+            const parseAlphaNum = match(.ALNUM, seq(.MULTI, &.{
+                takeWhile(.DIGIT, .oneOrMore, std.ascii.isDigit),
+                takeWhile(.ALPHA, .oneOrMore, std.ascii.isAlphabetic),
+            }));
+            var ctx: TestContext = .{ .allocator = std.testing.allocator };
+            try checkAndConsume(
+                ctx,
+                .initOk(.initSlice(.ALNUM, "100abc"), "."),
+                try parseAlphaNum(&ctx, "100abc."),
+            );
+        }
+
         // Call a parser that is pointed to by a field on the context.
         pub fn recurse(field_name: []const u8) Parser {
             const shim = struct {
-                fn match(ctx: *Context, input: []const u8) ZpcError!Result {
+                fn recurseParser(ctx: *Context, input: []const u8) ZpcError!Result {
                     const parser = @field(ctx, field_name);
                     return parser(ctx, input);
                 }
             };
-            return shim.match;
+            return shim.recurseParser;
         }
 
         test recurse {
