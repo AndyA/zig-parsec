@@ -509,20 +509,27 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             );
         }
 
-        pub fn many(tag: Tag, parser: Parser, min: usize) Parser {
+        pub const ManyOptions = struct {
+            min: usize = 0,
+            max: usize = std.math.maxInt(usize),
+        };
+
+        pub fn many(tag: Tag, parser: Parser, options: ManyOptions) Parser {
+            assert(options.min <= options.max);
             const shim = struct {
                 fn manyParser(ctx: *Context, input: []const u8) ZpcError!Result {
                     var list: Token.ArrayList = .empty;
                     errdefer Token.deinitArrayList(&list, ctx.allocator);
                     var tail = input;
                     while (true) {
+                        if (list.items.len >= options.max) break;
                         const res = try parser(ctx, tail);
                         if (!res.matched()) break;
                         try res.tok.ok.appendArrayList(ctx.allocator, &list);
                         tail = res.rest;
                     }
 
-                    if (list.items.len < min) {
+                    if (list.items.len < options.min) {
                         Token.deinitArrayList(&list, ctx.allocator);
                         return .initFail(input);
                     }
@@ -534,7 +541,11 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
         }
 
         test many {
-            const parseFooBar = many(.MULTI, alt(&.{ lit(.FOO, "Foo"), lit(.BAR, "Bar") }), 2);
+            const parseFooBar = many(
+                .MULTI,
+                alt(&.{ lit(.FOO, "Foo"), lit(.BAR, "Bar") }),
+                .{ .min = 2, .max = 3 },
+            );
             var ctx: TestContext = .{ .allocator = std.testing.allocator };
 
             try checkAndConsume(
@@ -547,11 +558,49 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                 try parseFooBar(&ctx, "FooFooBarBaz"),
             );
 
+            try checkAndConsume(
+                ctx,
+                .initOk(.initList(.MULTI, &.{
+                    .initSlice(.FOO, "Foo"),
+                    .initSlice(.FOO, "Foo"),
+                    .initSlice(.BAR, "Bar"),
+                }), "BarBaz"),
+                try parseFooBar(&ctx, "FooFooBarBarBaz"),
+            );
+
             // We need two or more so a single Foo shouldn't be consumed.
             try checkAndConsume(
                 ctx,
                 .initFail("Foo"),
                 try parseFooBar(&ctx, "Foo"),
+            );
+        }
+
+        pub fn optional(parser: Parser) Parser {
+            const shim = struct {
+                fn optionalParser(ctx: *Context, input: []const u8) ZpcError!Result {
+                    const res = try parser(ctx, input);
+                    if (res.matched()) return res;
+                    return .initOk(.initNothing(.NOP), input);
+                }
+            };
+            return shim.optionalParser;
+        }
+
+        test optional {
+            const parseMaybeNumber = optional(someAre(.DIGIT, std.ascii.isDigit, 1));
+            var ctx: TestContext = .{ .allocator = std.testing.allocator };
+
+            try checkAndConsume(
+                ctx,
+                .initOk(.initSlice(.DIGIT, "123"), "Foo"),
+                try parseMaybeNumber(&ctx, "123Foo"),
+            );
+
+            try checkAndConsume(
+                ctx,
+                .initOk(.initNothing(.NOP), "Foo"),
+                try parseMaybeNumber(&ctx, "Foo"),
             );
         }
 
@@ -634,7 +683,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                     many(.MANY, seq(.SEQ, &.{
                         alt(&.{ lit(.PLUS, "+"), lit(.MINUS, "-") }),
                         parseAtom,
-                    }), 0),
+                    }), .{}),
                 });
 
             const parseExpr = parseTerm;
