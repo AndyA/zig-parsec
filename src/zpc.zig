@@ -7,7 +7,6 @@ const Io = std.Io;
 const Allocator = std.mem.Allocator;
 
 pub const ZpcError = error{OutOfMemory};
-pub const ZpcPred = fn (char: u8) bool;
 
 pub fn ZpcToken(comptime Tag: type) type {
     return struct {
@@ -216,6 +215,11 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
         pub const Parser = ZpcParser(Context, Tag);
         pub const Mapper = fn (ctx: *Context, result: Result) ZpcError!Result;
 
+        pub const ManyOptions = struct {
+            min: usize = 0,
+            max: usize = std.math.maxInt(usize),
+        };
+
         pub fn lit(tag: Tag, str: []const u8) Parser {
             const shim = struct {
                 fn litParser(_: *Context, input: []const u8) ZpcError!Result {
@@ -271,47 +275,15 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             );
         }
 
-        pub fn oneIs(tag: Tag, pred: Predicate) Parser {
-            const shim = struct {
-                fn oneIsParser(_: *Context, input: []const u8) ZpcError!Result {
-                    if (input.len > 0 and pred(input[0]))
-                        return .initOk(.initSlice(tag, input[0..1]), input[1..]);
-                    return .initFail(input);
-                }
-            };
-            return shim.oneIsParser;
-        }
-
-        test oneIs {
-            const parseDigit = oneIs(.DIGIT, std.ascii.isDigit);
-            var ctx: TestContext = .{ .allocator = std.testing.allocator };
-
-            try checkAndConsume(
-                ctx,
-                .initOk(.initSlice(.DIGIT, "6"), "7"),
-                try parseDigit(&ctx, "67"),
-            );
-
-            try checkAndConsume(
-                ctx,
-                .initFail(""),
-                try parseDigit(&ctx, ""),
-            );
-
-            try checkAndConsume(
-                ctx,
-                .initFail("X"),
-                try parseDigit(&ctx, "X"),
-            );
-        }
-
-        pub fn someAre(tag: Tag, pred: Predicate, min: usize) Parser {
+        pub fn someAre(tag: Tag, pred: Predicate, options: ManyOptions) Parser {
+            assert(options.min <= options.max);
             const shim = struct {
                 fn someAreParser(_: *Context, input: []const u8) ZpcError!Result {
                     var pos: usize = 0;
-                    while (pos < input.len and pred(input[pos]))
+                    const len = @min(input.len, options.max);
+                    while (pos < len and pred(input[pos]))
                         pos += 1;
-                    if (pos < min)
+                    if (pos < options.min)
                         return .initFail(input);
                     return .initOk(.initSlice(tag, input[0..pos]), input[pos..]);
                 }
@@ -320,7 +292,11 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
         }
 
         test someAre {
-            const parseDigits = someAre(.DIGIT, std.ascii.isDigit, 1);
+            const parseDigits = someAre(
+                .DIGIT,
+                std.ascii.isDigit,
+                .{ .min = 1, .max = 2 },
+            );
             var ctx: TestContext = .{ .allocator = std.testing.allocator };
 
             try checkAndConsume(
@@ -333,6 +309,12 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                 ctx,
                 .initOk(.initSlice(.DIGIT, "67"), ""),
                 try parseDigits(&ctx, "67"),
+            );
+
+            try checkAndConsume(
+                ctx,
+                .initOk(.initSlice(.DIGIT, "67"), "8"),
+                try parseDigits(&ctx, "678"),
             );
 
             try checkAndConsume(
@@ -408,8 +390,8 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
 
         test seq {
             const parseAlphaNum = seq(.MULTI, &.{
-                someAre(.DIGIT, std.ascii.isDigit, 1),
-                someAre(.ALPHA, std.ascii.isAlphabetic, 1),
+                someAre(.DIGIT, std.ascii.isDigit, .{ .min = 1 }),
+                someAre(.ALPHA, std.ascii.isAlphabetic, .{ .min = 1 }),
             });
             var ctx: TestContext = .{ .allocator = std.testing.allocator };
 
@@ -507,11 +489,6 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             );
         }
 
-        pub const ManyOptions = struct {
-            min: usize = 0,
-            max: usize = std.math.maxInt(usize),
-        };
-
         pub fn many(tag: Tag, parser: Parser, options: ManyOptions) Parser {
             assert(options.min <= options.max);
             const shim = struct {
@@ -586,7 +563,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
         }
 
         test optional {
-            const parseMaybeNumber = optional(someAre(.DIGIT, std.ascii.isDigit, 1));
+            const parseMaybeNumber = optional(someAre(.DIGIT, std.ascii.isDigit, .{ .min = 1 }));
             var ctx: TestContext = .{ .allocator = std.testing.allocator };
 
             try checkAndConsume(
@@ -668,7 +645,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
         }
 
         test recurse {
-            const parseDigits = someAre(.DIGIT, std.ascii.isDigit, 1);
+            const parseDigits = someAre(.DIGIT, std.ascii.isDigit, .{ .min = 1 });
 
             const parseAtom = alt(&.{
                 seq(.NEST, &.{ discard(lit(.OPEN, "(")), recurse("expr"), discard(lit(.CLOSE, ")")) }),
