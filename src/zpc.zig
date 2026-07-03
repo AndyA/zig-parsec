@@ -493,6 +493,10 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             );
         }
 
+        pub fn between(lp: Parser, parser: Parser, rp: Parser) Parser {
+            return left(right(lp, parser), rp);
+        }
+
         pub fn many(tag: Tag, options: ManyOptions, parser: Parser) Parser {
             assert(options.min <= options.max);
             const shim = struct {
@@ -657,11 +661,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             const parseDigits = takeWhile(.DIGIT, .oneOrMore, std.ascii.isDigit);
 
             const parseAtom = alt(&.{
-                seq(.NEST, &.{
-                    discard(lit(.OPEN, "(")),
-                    recurse("expr"),
-                    discard(lit(.CLOSE, ")")),
-                }),
+                between(lit(.OPEN, "("), recurse("expr"), lit(.CLOSE, ")")),
                 parseDigits,
             });
 
@@ -692,14 +692,12 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
 
             const expr = "(123+7)-2+700;";
             const want: Result = .initOk(.initList(.TERM, &.{
-                .initList(.NEST, &.{
-                    .initList(.TERM, &.{
-                        .initSlice(.DIGIT, "123"),
-                        .initList(.MANY, &.{
-                            .initList(.SEQ, &.{
-                                .initSlice(.PLUS, "+"),
-                                .initSlice(.DIGIT, "7"),
-                            }),
+                .initList(.TERM, &.{
+                    .initSlice(.DIGIT, "123"),
+                    .initList(.MANY, &.{
+                        .initList(.SEQ, &.{
+                            .initSlice(.PLUS, "+"),
+                            .initSlice(.DIGIT, "7"),
                         }),
                     }),
                 }),
