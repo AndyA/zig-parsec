@@ -13,8 +13,9 @@ pub fn ZpcToken(comptime Tag: type) type {
     return struct {
         const Self = @This();
         pub const ArrayList = std.ArrayList(Self);
+        pub const NOP: Tag = @enumFromInt(0);
 
-        tag: Tag,
+        tag: Tag = NOP,
         value: union(enum) {
             nothing: void,
             slice: []const u8,
@@ -49,6 +50,18 @@ pub fn ZpcToken(comptime Tag: type) type {
         pub fn initArrayList(alloc: Allocator, tag: Tag, array: *ArrayList) ZpcError!Self {
             const list = try array.toOwnedSlice(alloc);
             return initList(tag, list);
+        }
+
+        pub fn isNothing(self: Self) bool {
+            return self.value == .nothing;
+        }
+
+        pub fn appendArrayList(self: Self, alloc: Allocator, array: *ArrayList) ZpcError!void {
+            if (!self.isNothing()) try array.append(alloc, self);
+        }
+
+        pub fn appendArrayListAssumeCapacity(self: Self, array: *ArrayList) void {
+            if (!self.isNothing()) array.appendAssumeCapacity(self);
         }
 
         pub fn deinit(self: Self, alloc: Allocator) void {
@@ -116,6 +129,7 @@ pub fn ZpcParser(comptime Context: type, comptime Tag: type) type {
 }
 
 const TestTag = enum {
+    NOP,
     HELLO,
     FOO,
     BAR,
@@ -127,6 +141,10 @@ const TestTag = enum {
     MINUS,
     OPEN,
     CLOSE,
+    SEQ,
+    NEST,
+    TERM,
+    MANY,
 };
 
 const TestContext = struct {
@@ -174,10 +192,19 @@ pub fn predNot(p: Predicate) Predicate {
     return shim.pred;
 }
 
-pub fn predSet(chars: []const u8) Predicate {
+pub fn predEqual(want: u8) Predicate {
     const shim = struct {
         fn pred(char: u8) bool {
-            return std.mem.containsAtLeastScalar(u8, chars, char, 1);
+            return char == want;
+        }
+    };
+    return shim.pred;
+}
+
+pub fn predSet(charset: []const u8) Predicate {
+    const shim = struct {
+        fn pred(char: u8) bool {
+            return std.mem.containsAtLeastScalar(u8, charset, char, 1);
         }
     };
     return shim.pred;
@@ -371,7 +398,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                             Token.deinitArrayList(&list, ctx.allocator);
                             return .initFail(input);
                         }
-                        list.appendAssumeCapacity(res.tok.ok);
+                        res.tok.ok.appendArrayListAssumeCapacity(&list);
                         tail = res.rest;
                     }
 
@@ -491,7 +518,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                     while (true) {
                         const res = try parser(ctx, tail);
                         if (!res.matched()) break;
-                        try list.append(ctx.allocator, res.tok.ok);
+                        try res.tok.ok.appendArrayList(ctx.allocator, &list);
                         tail = res.rest;
                     }
 
@@ -528,28 +555,31 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             );
         }
 
-        pub fn discard(tag: Tag, parser: Parser) Parser {
+        pub fn discard(parser: Parser) Parser {
             const shim = struct {
                 fn discardParser(ctx: *Context, input: []const u8) ZpcError!Result {
-                    const res = try parser(ctx, input);
-                    defer res.deinit(ctx.allocator);
+                    var arena = std.heap.ArenaAllocator.init(ctx.allocator);
+                    defer arena.deinit();
+                    var tmp_ctx: Context = ctx.*;
+                    tmp_ctx.allocator = arena.allocator();
+                    const res = try parser(&tmp_ctx, input);
                     return if (res.matched())
-                        .initOk(.initNothing(tag), res.rest)
+                        .initOk(.initNothing(Token.NOP), res.rest)
                     else
-                        .initFail(res.rest);
+                        .initFail(input);
                 }
             };
             return shim.discardParser;
         }
 
         test discard {
-            const parseHello = discard(.FOO, lit(.HELLO, "Hello"));
+            const parseHello = discard(lit(.HELLO, "Hello"));
 
             var ctx: TestContext = .{ .allocator = std.testing.allocator };
 
             try checkAndConsume(
                 ctx,
-                .initOk(.initNothing(.FOO), ", World"),
+                .initOk(.initNothing(.NOP), ", World"),
                 try parseHello(&ctx, "Hello, World"),
             );
 
@@ -558,6 +588,25 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                 .initFail("H"),
                 try parseHello(&ctx, "H"),
             );
+        }
+
+        pub fn match(tag: Tag, parser: Parser) Parser {
+            const shim = struct {
+                fn matchParser(ctx: *Context, input: []const u8) ZpcError!Result {
+                    var arena = std.heap.ArenaAllocator.init(ctx.allocator);
+                    defer arena.deinit();
+                    var tmp_ctx: Context = ctx.*;
+                    tmp_ctx.allocator = arena.allocator();
+                    const res = try parser(&tmp_ctx, input);
+                    if (!res.matched()) return .initFail(input);
+                    if (res.matched()) {
+                        const consumed: usize = @intFromPtr(res.rest.ptr) - @intFromPtr(input.ptr);
+                        return .initOk(.initSlice(tag, input[0..consumed]), res.rest);
+                    }
+                    return .initFail(input);
+                }
+            };
+            return shim.matchParser;
         }
 
         // Call a parser that is pointed to by a field on the context.
@@ -575,22 +624,19 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             const parseDigits = someAre(.DIGIT, std.ascii.isDigit, 1);
 
             const parseAtom = alt(&.{
-                seq(.MULTI, &.{
-                    lit(.OPEN, "("),
+                seq(.NEST, &.{
+                    discard(lit(.OPEN, "(")),
                     recurse("expr"),
-                    lit(.CLOSE, ")"),
+                    discard(lit(.CLOSE, ")")),
                 }),
                 parseDigits,
             });
 
             const parseTerm =
-                seq(.MULTI, &.{
+                seq(.TERM, &.{
                     parseAtom,
-                    many(.MULTI, seq(.MULTI, &.{
-                        alt(&.{
-                            lit(.PLUS, "+"),
-                            lit(.MINUS, "-"),
-                        }),
+                    many(.MANY, seq(.SEQ, &.{
+                        alt(&.{ lit(.PLUS, "+"), lit(.MINUS, "-") }),
                         parseAtom,
                     }), 0),
                 });
@@ -604,43 +650,47 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
 
             try checkAndConsume(
                 ctx,
-                .initOk(.initList(.MULTI, &.{
+                .initOk(.initList(.TERM, &.{
                     .initSlice(.DIGIT, "123"),
-                    .initList(.MULTI, &.{}),
+                    .initList(.MANY, &.{}),
                 }), ";"),
                 try parseExpr(&ctx, "123;"),
             );
 
-            const want: Result = .initOk(.initList(.MULTI, &.{
-                .initList(.MULTI, &.{
-                    .initSlice(.OPEN, "("),
-                    .initList(.MULTI, &.{
+            const want: Result = .initOk(.initList(.TERM, &.{
+                .initList(.NEST, &.{
+                    .initList(.TERM, &.{
                         .initSlice(.DIGIT, "123"),
-                        .initList(.MULTI, &.{
-                            .initList(.MULTI, &.{
+                        .initList(.MANY, &.{
+                            .initList(.SEQ, &.{
                                 .initSlice(.PLUS, "+"),
                                 .initSlice(.DIGIT, "7"),
                             }),
                         }),
                     }),
-                    .initSlice(.CLOSE, ")"),
                 }),
-                .initList(.MULTI, &.{
-                    .initList(.MULTI, &.{
+                .initList(.MANY, &.{
+                    .initList(.SEQ, &.{
                         .initSlice(.MINUS, "-"),
                         .initSlice(.DIGIT, "2"),
+                    }),
+                    .initList(.SEQ, &.{
+                        .initSlice(.PLUS, "+"),
+                        .initSlice(.DIGIT, "700"),
                     }),
                 }),
             }), ";");
 
+            const expr = "(123+7)-2+700;";
+
             if (false) {
-                const res = try parseExpr(&ctx, "(123+7)-2;");
+                const res = try parseExpr(&ctx, expr);
                 defer res.deinit(std.testing.allocator);
                 print("want: {f}\n", .{want});
                 print("res:  {f}\n", .{res});
             }
 
-            try checkAndConsume(ctx, want, try parseExpr(&ctx, "(123+7)-2;"));
+            try checkAndConsume(ctx, want, try parseExpr(&ctx, expr));
         }
     };
 }
