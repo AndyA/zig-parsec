@@ -224,7 +224,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             max: usize = std.math.maxInt(usize),
         };
 
-        pub fn lit(tag: Tag, str: []const u8) Parser {
+        pub fn keyword(tag: Tag, str: []const u8) Parser {
             const shim = struct {
                 fn litParser(_: *Context, input: []const u8) ZpcError!Result {
                     if (input.len >= str.len and std.mem.eql(u8, input[0..str.len], str))
@@ -235,8 +235,12 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             return shim.litParser;
         }
 
-        test lit {
-            const parseHello = lit(.HELLO, "Hello");
+        pub fn lit(str: []const u8) Parser {
+            return keyword(Token.NOP, str);
+        }
+
+        test keyword {
+            const parseHello = keyword(.HELLO, "Hello");
 
             var ctx: TestContext = .{ .allocator = std.testing.allocator };
 
@@ -345,8 +349,8 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
 
         test alt {
             const parseAlt = alt(&.{
-                lit(.HELLO, "Hello"),
-                lit(.FOO, "Foo"),
+                keyword(.HELLO, "Hello"),
+                keyword(.FOO, "Foo"),
             });
 
             var ctx: TestContext = .{ .allocator = std.testing.allocator };
@@ -427,8 +431,8 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
 
         test left {
             const parseLeft = left(
-                lit(.FOO, "Foo"),
-                lit(.BAR, "Bar"),
+                keyword(.FOO, "Foo"),
+                keyword(.BAR, "Bar"),
             );
 
             var ctx: TestContext = .{ .allocator = std.testing.allocator };
@@ -468,8 +472,8 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
 
         test right {
             const parseRight = right(
-                lit(.FOO, "Foo"),
-                lit(.BAR, "Bar"),
+                keyword(.FOO, "Foo"),
+                keyword(.BAR, "Bar"),
             );
 
             var ctx: TestContext = .{ .allocator = std.testing.allocator };
@@ -527,7 +531,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             const parseFooBar = many(
                 .MULTI,
                 .{ .min = 2, .max = 3 },
-                alt(&.{ lit(.FOO, "Foo"), lit(.BAR, "Bar") }),
+                alt(&.{ keyword(.FOO, "Foo"), keyword(.BAR, "Bar") }),
             );
             var ctx: TestContext = .{ .allocator = std.testing.allocator };
 
@@ -609,7 +613,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
         }
 
         test discard {
-            const parseHello = discard(lit(.HELLO, "Hello"));
+            const parseHello = discard(keyword(.HELLO, "Hello"));
 
             var ctx: TestContext = .{ .allocator = std.testing.allocator };
 
@@ -661,7 +665,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             const parseDigits = takeWhile(.DIGIT, .oneOrMore, std.ascii.isDigit);
 
             const parseAtom = alt(&.{
-                between(lit(.OPEN, "("), recurse("expr"), lit(.CLOSE, ")")),
+                between(lit("("), recurse("expr"), lit(")")),
                 parseDigits,
             });
 
@@ -669,7 +673,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                 seq(.TERM, &.{
                     parseAtom,
                     many(.MANY, .zeroOrMore, seq(.SEQ, &.{
-                        alt(&.{ lit(.PLUS, "+"), lit(.MINUS, "-") }),
+                        alt(&.{ keyword(.PLUS, "+"), keyword(.MINUS, "-") }),
                         parseAtom,
                     })),
                 });
