@@ -27,7 +27,7 @@ pub fn ZpcToken(comptime Tag: type) type {
                 .nothing => {},
                 .slice => |slice| try writer.print(" \"{s}\"", .{slice}),
                 .list => |list| {
-                    try writer.print("(", .{});
+                    try writer.print("({d}|", .{list.len});
                     for (list) |item| try writer.print(" {f}", .{item});
                     try writer.print(" )", .{});
                 },
@@ -123,6 +123,10 @@ const TestTag = enum {
     DIGIT,
     ALPHA,
     MULTI,
+    PLUS,
+    MINUS,
+    OPEN,
+    CLOSE,
 };
 
 const TestContext = struct {
@@ -560,11 +564,83 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
         pub fn recurse(field_name: []const u8) Parser {
             const shim = struct {
                 fn match(ctx: *Context, input: []const u8) ZpcError!Result {
-                    const parser = @field(Context, field_name);
+                    const parser = @field(ctx, field_name);
                     return parser(ctx, input);
                 }
             };
             return shim.match;
+        }
+
+        test recurse {
+            const parseDigits = someAre(.DIGIT, std.ascii.isDigit, 1);
+
+            const parseAtom = alt(&.{
+                seq(.MULTI, &.{
+                    lit(.OPEN, "("),
+                    recurse("expr"),
+                    lit(.CLOSE, ")"),
+                }),
+                parseDigits,
+            });
+
+            const parseTerm =
+                seq(.MULTI, &.{
+                    parseAtom,
+                    many(.MULTI, seq(.MULTI, &.{
+                        alt(&.{
+                            lit(.PLUS, "+"),
+                            lit(.MINUS, "-"),
+                        }),
+                        parseAtom,
+                    }), 0),
+                });
+
+            const parseExpr = parseTerm;
+
+            var ctx: TestContext = .{
+                .allocator = std.testing.allocator,
+                .expr = parseExpr,
+            };
+
+            try checkAndConsume(
+                ctx,
+                .initOk(.initList(.MULTI, &.{
+                    .initSlice(.DIGIT, "123"),
+                    .initList(.MULTI, &.{}),
+                }), ";"),
+                try parseExpr(&ctx, "123;"),
+            );
+
+            const want: Result = .initOk(.initList(.MULTI, &.{
+                .initList(.MULTI, &.{
+                    .initSlice(.OPEN, "("),
+                    .initList(.MULTI, &.{
+                        .initSlice(.DIGIT, "123"),
+                        .initList(.MULTI, &.{
+                            .initList(.MULTI, &.{
+                                .initSlice(.PLUS, "+"),
+                                .initSlice(.DIGIT, "7"),
+                            }),
+                        }),
+                    }),
+                    .initSlice(.CLOSE, ")"),
+                }),
+                .initList(.MULTI, &.{
+                    .initList(.MULTI, &.{
+                        .initSlice(.MINUS, "-"),
+                        .initSlice(.DIGIT, "2"),
+                    }),
+                }),
+            }), ";");
+
+            if (false) {
+                const res = try parseExpr(&ctx, "(123+7)-2;");
+                defer res.deinit(std.testing.allocator);
+                print("want: {f}\n", .{want});
+                print("res:  {f}\n", .{res});
+            }
+
+            try checkAndConsume(ctx, want, try parseExpr(&ctx, "(123+7)-2;"));
         }
     };
 }
