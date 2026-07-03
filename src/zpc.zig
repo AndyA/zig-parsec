@@ -624,11 +624,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             const parseDigits = someAre(.DIGIT, std.ascii.isDigit, 1);
 
             const parseAtom = alt(&.{
-                seq(.NEST, &.{
-                    discard(lit(.OPEN, "(")),
-                    recurse("expr"),
-                    discard(lit(.CLOSE, ")")),
-                }),
+                seq(.NEST, &.{ discard(lit(.OPEN, "(")), recurse("expr"), discard(lit(.CLOSE, ")")) }),
                 parseDigits,
             });
 
