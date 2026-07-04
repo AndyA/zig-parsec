@@ -631,7 +631,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             );
         }
 
-        pub fn match(tag: Tag, parser: Parser) Parser {
+        pub fn span(tag: Tag, parser: Parser) Parser {
             const shim = struct {
                 fn matchParser(ctx: *Context, input: []const u8) ZpcError!Result {
                     var arena = std.heap.ArenaAllocator.init(ctx.allocator);
@@ -648,8 +648,8 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             return shim.matchParser;
         }
 
-        test match {
-            const parseAlphaNum = match(.ALNUM, seq(.MULTI, &.{
+        test span {
+            const parseAlphaNum = span(.ALNUM, seq(.MULTI, &.{
                 takeWhile(.DIGIT, .oneOrMore, std.ascii.isDigit),
                 takeWhile(.ALPHA, .oneOrMore, std.ascii.isAlphabetic),
             }));
