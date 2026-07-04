@@ -640,12 +640,9 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                     tmp_ctx.allocator = arena.allocator();
                     const res = try parser(&tmp_ctx, input);
                     if (!res.matched()) return .initFail(input);
-                    if (res.matched()) {
-                        const consumed: usize = @intFromPtr(res.rest.ptr) -
-                            @intFromPtr(input.ptr);
-                        return .initOk(.initSlice(tag, input[0..consumed]), res.rest);
-                    }
-                    return .initFail(input);
+                    const consumed: usize = @intFromPtr(res.rest.ptr) -
+                        @intFromPtr(input.ptr);
+                    return .initOk(.initSlice(tag, input[0..consumed]), res.rest);
                 }
             };
             return shim.matchParser;
