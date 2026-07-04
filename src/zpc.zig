@@ -501,6 +501,33 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             return left(right(lp, parser), rp);
         }
 
+        test between {
+            const parseBetween = between(
+                literal("("),
+                takeWhile(.DIGIT, .oneOrMore, std.ascii.isDigit),
+                literal(")"),
+            );
+            var ctx: TestContext = .{ .allocator = std.testing.allocator };
+
+            try checkAndConsume(
+                ctx,
+                .initOk(.initSlice(.DIGIT, "123"), "."),
+                try parseBetween(&ctx, "(123)."),
+            );
+
+            try checkAndConsume(
+                ctx,
+                .initFail("(123"),
+                try parseBetween(&ctx, "(123"),
+            );
+
+            try checkAndConsume(
+                ctx,
+                .initFail("("),
+                try parseBetween(&ctx, "("),
+            );
+        }
+
         pub fn many(tag: Tag, options: ManyOptions, parser: Parser) Parser {
             assert(options.min <= options.max);
             const shim = struct {
