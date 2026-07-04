@@ -210,7 +210,8 @@ pub fn predSet(charset: []const u8) Predicate {
 }
 
 pub fn Zpc(comptime Context: type, comptime Tag: type) type {
-    assert(@hasField(Context, "allocator"));
+    if (!@hasField(Context, "allocator"))
+        @compileError("Context must have an allocator field");
     return struct {
         pub const Token = ZpcToken(Tag);
         pub const Result = ZpcResult(Tag);
