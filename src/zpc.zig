@@ -283,6 +283,34 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             );
         }
 
+        pub fn eof() Parser {
+            const shim = struct {
+                fn eofParser(_: *Context, input: []const u8) ZpcError!Result {
+                    if (input.len == 0)
+                        return .initOk(.nothing, input);
+                    return .initFail(input);
+                }
+            };
+            return shim.eofParser;
+        }
+
+        test eof {
+            const parseEof = eof();
+            var ctx: TestContext = .{ .allocator = std.testing.allocator };
+
+            try checkAndConsume(
+                ctx,
+                .initOk(.nothing, ""),
+                try parseEof(&ctx, ""),
+            );
+
+            try checkAndConsume(
+                ctx,
+                .initFail("X"),
+                try parseEof(&ctx, "X"),
+            );
+        }
+
         pub fn takeWhile(tag: Tag, options: ManyOptions, pred: Predicate) Parser {
             assert(options.min <= options.max);
             const shim = struct {
