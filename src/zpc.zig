@@ -151,8 +151,6 @@ const TestContext = struct {
     expr: *const ZpcParser(@This(), TestTag) = undefined,
 };
 
-const TZ = Zpc(TestContext, TestTag);
-
 fn checkAndConsume(
     ctx: TestContext,
     expected: ZpcResult(TestTag),
@@ -742,5 +740,5 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
 }
 
 test Zpc {
-    _ = TZ;
+    _ = Zpc(TestContext, TestTag);
 }
