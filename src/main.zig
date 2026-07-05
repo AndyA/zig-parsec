@@ -45,32 +45,33 @@ fn makeJsonParser() P.Parser {
         posParser,
     }));
 
-    const jsonParser = P.right(skipSpace, P.recurse("jsonParser"));
+    const recuseParser = P.recurse("jsonParser");
+
     const arrayParser = P.seq(.ARRAY, &.{
         P.discard(P.literal("[")),
         P.alt(&.{
             P.discard(P.right(skipSpace, P.literal("]"))),
             P.flat(P.seq(.NONE, &.{
-                jsonParser,
+                recuseParser,
                 P.flat(P.many(
                     .NONE,
                     .zeroOrMore,
-                    P.right(P.right(skipSpace, P.literal(",")), jsonParser),
+                    P.right(P.right(skipSpace, P.literal(",")), recuseParser),
                 )),
                 P.discard(P.right(skipSpace, P.literal("]"))),
             })),
         }),
     });
 
-    const atomParser = P.alt(&.{
+    const jsonParser = P.right(skipSpace, P.alt(&.{
         P.keyword(.FALSE, "false"),
         P.keyword(.TRUE, "true"),
         P.keyword(.NULL, "null"),
         arrayParser,
         numParser,
-    });
+    }));
 
-    return atomParser;
+    return jsonParser;
 }
 
 pub fn main(init: std.process.Init) !void {
