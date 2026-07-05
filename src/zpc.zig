@@ -221,8 +221,8 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
         pub const Mapper = fn (ctx: Context, result: Result) ZpcError!Result;
 
         pub const Bounds = struct {
-            const zeroOrMore: @This() = .{};
-            const oneOrMore: @This() = .{ .min = 1 };
+            pub const zeroOrMore: @This() = .{};
+            pub const oneOrMore: @This() = .{ .min = 1 };
 
             min: usize = 0,
             max: usize = std.math.maxInt(usize),

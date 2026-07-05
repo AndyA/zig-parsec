@@ -17,6 +17,7 @@ const JsonTag = enum {
     NULL,
     ARRAY,
     OBJECT,
+    KEYVALUE,
 };
 
 const JsonContext = struct {
@@ -25,3 +26,16 @@ const JsonContext = struct {
 };
 
 const P = zpc.Zpc(JsonContext, JsonTag);
+
+fn makeJsonParser() P.Parser {
+    const intParser = P.takeWhile(.NONE, .oneOrMore, std.ascii.isDigit);
+    _ = intParser;
+    // const numberParser = P.
+
+    const atomParser = P.alt(&.{
+        P.keyword(.FALSE, "false"),
+        P.keyword(.TRUE, "true"),
+        P.keyword(.NULL, "null"),
+    });
+    _ = atomParser;
+}
