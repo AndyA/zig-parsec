@@ -739,17 +739,18 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
 
         test recurse {
             const parseDigits = takeWhile(.DIGIT, .oneOrMore, std.ascii.isDigit);
+            const parseSpace = discard(takeWhile(Token.NOP, .zeroOrMore, std.ascii.isWhitespace));
 
-            const parseAtom = alt(&.{
+            const parseAtom = right(parseSpace, alt(&.{
                 between(literal("("), recurse("expr"), literal(")")),
                 parseDigits,
-            });
+            }));
 
             const parseTerm =
                 seq(.TERM, &.{
                     parseAtom,
                     many(.MANY, .zeroOrMore, seq(.SEQ, &.{
-                        alt(&.{ keyword(.PLUS, "+"), keyword(.MINUS, "-") }),
+                        right(parseSpace, alt(&.{ keyword(.PLUS, "+"), keyword(.MINUS, "-") })),
                         parseAtom,
                     })),
                 });
@@ -770,7 +771,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                 try parseExpr(ctx, "123;"),
             );
 
-            const expr = "(123+7)-2+700;";
+            const expr = "(123 + 7) - 2 + 700;";
             const want: Result = .initOk(.initList(.TERM, &.{
                 .initList(.TERM, &.{
                     .initSlice(.DIGIT, "123"),
