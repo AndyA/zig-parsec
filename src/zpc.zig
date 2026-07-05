@@ -21,6 +21,7 @@ pub fn ZpcToken(comptime Tag: type) type {
             nothing: void,
             slice: []const u8,
             list: []const Self,
+            flat: []const Self, // Like a list but flattens into its parent
         },
 
         pub fn format(self: Self, writer: *Io.Writer) Io.Writer.Error!void {
@@ -28,7 +29,7 @@ pub fn ZpcToken(comptime Tag: type) type {
             switch (self.value) {
                 .nothing => {},
                 .slice => |slice| try writer.print(" \"{s}\"", .{slice}),
-                .list => |list| {
+                .list, .flat => |list| {
                     try writer.print("({d}|", .{list.len});
                     for (list) |item| try writer.print(" {f}", .{item});
                     try writer.print(" )", .{});
@@ -54,17 +55,20 @@ pub fn ZpcToken(comptime Tag: type) type {
         }
 
         pub fn appendArrayList(self: Self, alloc: Allocator, array: *ArrayList) ZpcError!void {
-            if (!self.isNothing()) try array.append(alloc, self);
-        }
-
-        pub fn appendArrayListAssumeCapacity(self: Self, array: *ArrayList) void {
-            if (!self.isNothing()) array.appendAssumeCapacity(self);
+            switch (self.value) {
+                .nothing => {},
+                .slice, .list => try array.append(alloc, self),
+                .flat => |flat| {
+                    defer self.deinit(alloc);
+                    try array.appendSlice(alloc, flat);
+                },
+            }
         }
 
         pub fn deinit(self: Self, alloc: Allocator) void {
             switch (self.value) {
-                .list => |list| deinitList(list, alloc),
-                else => {},
+                .list, .flat => |list| deinitList(list, alloc),
+                .nothing, .slice => {},
             }
         }
 
@@ -115,7 +119,7 @@ pub fn ZpcResult(comptime Tag: type) type {
         pub fn deinit(self: Self, alloc: Allocator) void {
             switch (self.tok) {
                 .ok => |ok| ok.deinit(alloc),
-                else => {},
+                .fail => {},
             }
         }
 
@@ -148,6 +152,7 @@ const TestTag = enum {
     TERM,
     MANY,
     ALNUM,
+    ARRAY,
 };
 
 const TestContext = struct {
@@ -417,7 +422,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
         pub fn seq(tag: Tag, parsers: []const *const Parser) Parser {
             const shim = struct {
                 fn seqParser(ctx: Context, input: []const u8) ZpcError!Result {
-                    var list: Token.ArrayList = try .initCapacity(ctx.allocator, parsers.len);
+                    var list: Token.ArrayList = .empty;
                     errdefer Token.deinitArrayList(&list, ctx.allocator);
                     var tail = input;
                     inline for (parsers) |parser| {
@@ -426,7 +431,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                             Token.deinitArrayList(&list, ctx.allocator);
                             return .initFail(res.tok.fail, input);
                         }
-                        res.tok.ok.appendArrayListAssumeCapacity(&list);
+                        try res.tok.ok.appendArrayList(ctx.allocator, &list);
                         tail = res.rest;
                     }
 
@@ -723,6 +728,59 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                 ctx,
                 .initOk(.initSlice(.ALNUM, "100abc"), "."),
                 try parseAlphaNum(ctx, "100abc."),
+            );
+        }
+
+        pub fn flat(parser: Parser) Parser {
+            const shim = struct {
+                fn flatParser(ctx: Context, input: []const u8) ZpcError!Result {
+                    const res = try parser(ctx, input);
+                    if (res.matched()) {
+                        return switch (res.tok.ok.value) {
+                            .list => |list| .initOk(.{
+                                .tag = res.tok.ok.tag,
+                                .value = .{ .flat = list },
+                            }, res.rest),
+                            else => res,
+                        };
+                    }
+                    return res;
+                }
+            };
+            return shim.flatParser;
+        }
+
+        test flat {
+            const parseDigits = takeWhile(.DIGIT, .oneOrMore, std.ascii.isDigit);
+            const parseFlat = seq(.ARRAY, &.{
+                parseDigits,
+                flat(many(
+                    Token.NOP,
+                    .zeroOrMore,
+                    right(literal(","), parseDigits),
+                )),
+            });
+
+            const ctx: TestContext = .{ .allocator = std.testing.allocator };
+
+            const expr = "1,2,3;";
+            const want: Result = .initOk(.initList(.ARRAY, &.{
+                .initSlice(.DIGIT, "1"),
+                .initSlice(.DIGIT, "2"),
+                .initSlice(.DIGIT, "3"),
+            }), ";");
+
+            if (false) {
+                const res = try parseFlat(ctx, expr);
+                defer res.deinit(std.testing.allocator);
+                print("want: {f}\n", .{want});
+                print("res:  {f}\n", .{res});
+            }
+
+            try checkAndConsume(
+                ctx,
+                want,
+                try parseFlat(ctx, expr),
             );
         }
 

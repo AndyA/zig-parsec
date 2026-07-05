@@ -22,26 +22,52 @@ const JsonTag = enum {
 
 const JsonContext = struct {
     allocator: Allocator,
-    // expr: *const P.Parser = undefined,
+    jsonParser: *const zpc.ZpcParser(@This(), JsonTag),
 };
 
 const P = zpc.Zpc(JsonContext, JsonTag);
 
 fn makeJsonParser() P.Parser {
+    const skipSpace = P.takeWhile(.NONE, .zeroOrMore, std.ascii.isWhitespace);
     const intParser = P.takeWhile(.NONE, .oneOrMore, std.ascii.isDigit);
-    const numberParser = P.span(
-        .NUMBER,
-        P.seq(.NONE, &.{
-            intParser,
-            P.optional(P.seq(.NONE, &.{ P.literal("."), intParser })),
+
+    const posParser =
+        P.left(
+            P.left(intParser, P.optional(P.left(P.literal("."), intParser))),
+            P.left(
+                P.alt(&.{ P.literal("e"), P.literal("E") }),
+                P.left(P.optional(P.alt(&.{ P.literal("+"), P.literal("-") })), intParser),
+            ),
+        );
+
+    const numParser = P.span(.NUMBER, P.alt(&.{
+        P.left(P.literal("-"), posParser),
+        posParser,
+    }));
+
+    const jsonParser = P.right(skipSpace, P.recurse("jsonParser"));
+    const arrayParser = P.seq(.ARRAY, &.{
+        P.discard(P.literal("[")),
+        P.alt(&.{
+            P.discard(P.right(skipSpace, P.literal("]"))),
+            P.flat(P.seq(.NONE, &.{
+                jsonParser,
+                P.flat(P.many(
+                    .NONE,
+                    .zeroOrMore,
+                    P.right(P.right(skipSpace, P.literal(",")), jsonParser),
+                )),
+                P.discard(P.literal("]")),
+            })),
         }),
-    );
+    });
 
     const atomParser = P.alt(&.{
         P.keyword(.FALSE, "false"),
         P.keyword(.TRUE, "true"),
         P.keyword(.NULL, "null"),
-        numberParser,
+        arrayParser,
+        numParser,
     });
 
     return atomParser;
@@ -49,8 +75,12 @@ fn makeJsonParser() P.Parser {
 
 pub fn main(init: std.process.Init) !void {
     const jsonParser = makeJsonParser();
-    const ctx: JsonContext = .{ .allocator = init.gpa };
-    const res = try jsonParser(ctx, "12.3");
+    const ctx: JsonContext = .{
+        .allocator = init.gpa,
+        .jsonParser = jsonParser,
+    };
+    const res = try jsonParser(ctx, "[-12.3e+99,false]");
+    defer res.deinit(init.gpa);
     print("{f}\n", .{res});
 }
 
