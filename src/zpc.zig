@@ -426,7 +426,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                         const res = try parser(ctx, tail);
                         if (!res.matched()) {
                             Token.deinitArrayList(&list, ctx.allocator);
-                            return .initFail(tail, input);
+                            return .initFail(res.tok.fail, input);
                         }
                         res.tok.ok.appendArrayListAssumeCapacity(&list);
                         tail = res.rest;
@@ -463,10 +463,10 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                 fn leftParser(ctx: Context, input: []const u8) ZpcError!Result {
                     const lres = try lp(ctx, input);
                     errdefer lres.deinit(ctx.allocator);
-                    if (!lres.matched()) return .initFailHere(input);
+                    if (!lres.matched()) return .initFail(lres.tok.fail, input);
                     const rres = try rp(ctx, lres.rest);
                     defer rres.deinit(ctx.allocator);
-                    if (!rres.matched()) return .initFail(lres.rest, input);
+                    if (!rres.matched()) return .initFail(rres.tok.fail, input);
                     return .initOk(lres.tok.ok, rres.rest);
                 }
             };
@@ -505,9 +505,9 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                 fn rightParser(ctx: Context, input: []const u8) ZpcError!Result {
                     const lres = try lp(ctx, input);
                     defer lres.deinit(ctx.allocator);
-                    if (!lres.matched()) return .initFailHere(input);
+                    if (!lres.matched()) return .initFail(lres.tok.fail, input);
                     const rres = try rp(ctx, lres.rest);
-                    if (!rres.matched()) return .initFail(lres.rest, input);
+                    if (!rres.matched()) return .initFail(rres.tok.fail, input);
                     return rres;
                 }
             };
@@ -565,12 +565,11 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                 try parseBetween(ctx, "(123"),
             );
 
-            // TODO ???
-            // try checkAndConsume(
-            //     ctx,
-            //     .initFail("", "("),
-            //     try parseBetween(ctx, "("),
-            // );
+            try checkAndConsume(
+                ctx,
+                .initFail("", "("),
+                try parseBetween(ctx, "("),
+            );
         }
 
         pub fn many(tag: Tag, options: ManyOptions, parser: Parser) Parser {
@@ -583,16 +582,15 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                     while (true) {
                         if (list.items.len >= options.max) break;
                         const res = try parser(ctx, tail);
-                        if (!res.matched()) break;
+                        if (!res.matched()) {
+                            if (list.items.len >= options.min)
+                                break;
+                            Token.deinitArrayList(&list, ctx.allocator);
+                            return .initFail(res.tok.fail, input);
+                        }
                         try res.tok.ok.appendArrayList(ctx.allocator, &list);
                         tail = res.rest;
                     }
-
-                    if (list.items.len < options.min) {
-                        Token.deinitArrayList(&list, ctx.allocator);
-                        return .initFail(tail, input);
-                    }
-
                     return .initOk(try .initArrayList(ctx.allocator, tag, &list), tail);
                 }
             };
