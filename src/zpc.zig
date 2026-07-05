@@ -59,7 +59,7 @@ pub fn ZpcToken(comptime Tag: type) type {
                 .nothing => {},
                 .slice, .list => try array.append(alloc, self),
                 .flat => |flat| {
-                    defer self.deinit(alloc);
+                    defer alloc.free(flat); // shallow
                     try array.appendSlice(alloc, flat);
                 },
             }
