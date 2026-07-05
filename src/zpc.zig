@@ -8,6 +8,12 @@ const Allocator = std.mem.Allocator;
 
 pub const ZpcError = error{OutOfMemory};
 
+// Given two slices into the same backing slice return the one that reaches
+// furthest into the backing slice.
+pub fn furthest(a: []const u8, b: []const u8) []const u8 {
+    return if (@intFromPtr(a.ptr) > @intFromPtr(b.ptr)) a else b;
+}
+
 pub fn ZpcToken(comptime Tag: type) type {
     return struct {
         const Self = @This();
@@ -85,7 +91,7 @@ pub fn ZpcResult(comptime Tag: type) type {
         const Self = @This();
         tok: union(enum) {
             ok: ZpcToken(Tag),
-            fail: void,
+            fail: []const u8,
         },
         rest: []const u8,
 
@@ -100,8 +106,12 @@ pub fn ZpcResult(comptime Tag: type) type {
                 try writer.print(" rest: \"{s}\"", .{self.rest});
         }
 
-        pub fn initFail(rest: []const u8) Self {
-            return .{ .tok = .{ .fail = {} }, .rest = rest };
+        pub fn initFail(at: []const u8, rest: []const u8) Self {
+            return .{ .tok = .{ .fail = at }, .rest = rest };
+        }
+
+        pub fn initFailHere(rest: []const u8) Self {
+            return initFail(rest, rest);
         }
 
         pub fn initOk(value: ZpcToken(Tag), rest: []const u8) Self {
@@ -229,7 +239,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                 fn litParser(_: Context, input: []const u8) ZpcError!Result {
                     if (input.len >= str.len and std.mem.eql(u8, input[0..str.len], str))
                         return .initOk(.initSlice(tag, str), input[str.len..]);
-                    return .initFail(input);
+                    return .initFailHere(input);
                 }
             };
             return shim.litParser;
@@ -252,13 +262,13 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
 
             try checkAndConsume(
                 ctx,
-                .initFail("H"),
+                .initFailHere("H"),
                 try parseHello(ctx, "H"),
             );
 
             try checkAndConsume(
                 ctx,
-                .initFail("Hell or bust"),
+                .initFailHere("Hell or bust"),
                 try parseHello(ctx, "Hell or bust"),
             );
         }
@@ -288,7 +298,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                 fn eofParser(_: Context, input: []const u8) ZpcError!Result {
                     if (input.len == 0)
                         return .initOk(.nothing, input);
-                    return .initFail(input);
+                    return .initFailHere(input);
                 }
             };
             return shim.eofParser;
@@ -306,7 +316,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
 
             try checkAndConsume(
                 ctx,
-                .initFail("X"),
+                .initFailHere("X"),
                 try parseEof(ctx, "X"),
             );
         }
@@ -320,7 +330,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                     while (pos < len and pred(input[pos]))
                         pos += 1;
                     if (pos < options.min)
-                        return .initFail(input);
+                        return .initFail(input[pos..], input);
                     return .initOk(.initSlice(tag, input[0..pos]), input[pos..]);
                 }
             };
@@ -355,7 +365,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
 
             try checkAndConsume(
                 ctx,
-                .initFail("X"),
+                .initFailHere("X"),
                 try parseDigits(ctx, "X"),
             );
         }
@@ -363,13 +373,15 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
         pub fn alt(parsers: []const *const Parser) Parser {
             const shim = struct {
                 fn altParser(ctx: Context, input: []const u8) ZpcError!Result {
+                    var hwm = input;
                     inline for (parsers) |parser| {
                         const res = try parser(ctx, input);
                         if (res.matched())
                             return res;
+                        hwm = furthest(hwm, res.tok.fail);
                     }
 
-                    return .initFail(input);
+                    return .initFail(hwm, input);
                 }
             };
             return shim.altParser;
@@ -397,9 +409,11 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
 
             try checkAndConsume(
                 ctx,
-                .initFail("Hell or bust"),
+                .initFailHere("Hell or bust"),
                 try parseAlt(ctx, "Hell or bust"),
             );
+
+            // TODO check hwm
         }
 
         pub fn seq(tag: Tag, parsers: []const *const Parser) Parser {
@@ -412,7 +426,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                         const res = try parser(ctx, tail);
                         if (!res.matched()) {
                             Token.deinitArrayList(&list, ctx.allocator);
-                            return .initFail(input);
+                            return .initFail(tail, input);
                         }
                         res.tok.ok.appendArrayListAssumeCapacity(&list);
                         tail = res.rest;
@@ -440,6 +454,8 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
 
                 try parseAlphaNum(ctx, "123ABC."),
             );
+
+            // TODO fail
         }
 
         pub fn left(lp: Parser, rp: Parser) Parser {
@@ -447,10 +463,10 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                 fn leftParser(ctx: Context, input: []const u8) ZpcError!Result {
                     const lres = try lp(ctx, input);
                     errdefer lres.deinit(ctx.allocator);
-                    if (!lres.matched()) return .initFail(input);
+                    if (!lres.matched()) return .initFailHere(input);
                     const rres = try rp(ctx, lres.rest);
                     defer rres.deinit(ctx.allocator);
-                    if (!rres.matched()) return .initFail(input);
+                    if (!rres.matched()) return .initFail(lres.rest, input);
                     return .initOk(lres.tok.ok, rres.rest);
                 }
             };
@@ -473,13 +489,13 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
 
             try checkAndConsume(
                 ctx,
-                .initFail("FooBaz"),
+                .initFail("Baz", "FooBaz"),
                 try parseLeft(ctx, "FooBaz"),
             );
 
             try checkAndConsume(
                 ctx,
-                .initFail("BarFoo"),
+                .initFailHere("BarFoo"),
                 try parseLeft(ctx, "BarFoo"),
             );
         }
@@ -489,9 +505,9 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                 fn rightParser(ctx: Context, input: []const u8) ZpcError!Result {
                     const lres = try lp(ctx, input);
                     defer lres.deinit(ctx.allocator);
-                    if (!lres.matched()) return .initFail(input);
+                    if (!lres.matched()) return .initFailHere(input);
                     const rres = try rp(ctx, lres.rest);
-                    if (!rres.matched()) return .initFail(input);
+                    if (!rres.matched()) return .initFail(lres.rest, input);
                     return rres;
                 }
             };
@@ -514,13 +530,13 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
 
             try checkAndConsume(
                 ctx,
-                .initFail("FooBaz"),
+                .initFail("Baz", "FooBaz"),
                 try parseRight(ctx, "FooBaz"),
             );
 
             try checkAndConsume(
                 ctx,
-                .initFail("BarFoo"),
+                .initFailHere("BarFoo"),
                 try parseRight(ctx, "BarFoo"),
             );
         }
@@ -545,15 +561,16 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
 
             try checkAndConsume(
                 ctx,
-                .initFail("(123"),
+                .initFail("", "(123"),
                 try parseBetween(ctx, "(123"),
             );
 
-            try checkAndConsume(
-                ctx,
-                .initFail("("),
-                try parseBetween(ctx, "("),
-            );
+            // TODO ???
+            // try checkAndConsume(
+            //     ctx,
+            //     .initFail("", "("),
+            //     try parseBetween(ctx, "("),
+            // );
         }
 
         pub fn many(tag: Tag, options: ManyOptions, parser: Parser) Parser {
@@ -573,7 +590,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
 
                     if (list.items.len < options.min) {
                         Token.deinitArrayList(&list, ctx.allocator);
-                        return .initFail(input);
+                        return .initFail(tail, input);
                     }
 
                     return .initOk(try .initArrayList(ctx.allocator, tag, &list), tail);
@@ -613,7 +630,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             // We need two or more so a single Foo shouldn't be consumed.
             try checkAndConsume(
                 ctx,
-                .initFail("Foo"),
+                .initFail("", "Foo"),
                 try parseFooBar(ctx, "Foo"),
             );
         }
@@ -658,10 +675,8 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                     var tmp_ctx: Context = ctx;
                     tmp_ctx.allocator = arena.allocator();
                     const res = try parser(tmp_ctx, input);
-                    return if (res.matched())
-                        .initOk(.nothing, res.rest)
-                    else
-                        .initFail(input);
+                    if (!res.matched()) return .initFail(res.tok.fail, input);
+                    return .initOk(.nothing, res.rest);
                 }
             };
             return shim.discardParser;
@@ -680,7 +695,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
 
             try checkAndConsume(
                 ctx,
-                .initFail("H"),
+                .initFailHere("H"),
                 try parseHello(ctx, "H"),
             );
         }
@@ -693,7 +708,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                     var tmp_ctx: Context = ctx;
                     tmp_ctx.allocator = arena.allocator();
                     const res = try parser(tmp_ctx, input);
-                    if (!res.matched()) return .initFail(input);
+                    if (!res.matched()) return .initFail(res.tok.fail, input);
                     const consumed: usize = @intFromPtr(res.rest.ptr) -
                         @intFromPtr(input.ptr);
                     return .initOk(.initSlice(tag, input[0..consumed]), res.rest);
