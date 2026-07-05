@@ -630,8 +630,8 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             // We need two or more so a single Foo shouldn't be consumed.
             try checkAndConsume(
                 ctx,
-                .initFail("", "Foo"),
-                try parseFooBar(ctx, "Foo"),
+                .initFail(".", "Foo."),
+                try parseFooBar(ctx, "Foo."),
             );
         }
 
