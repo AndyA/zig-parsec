@@ -57,7 +57,7 @@ fn makeJsonParser() P.Parser {
                     .zeroOrMore,
                     P.right(P.right(skipSpace, P.literal(",")), jsonParser),
                 )),
-                P.discard(P.literal("]")),
+                P.discard(P.right(skipSpace, P.literal("]"))),
             })),
         }),
     });
@@ -79,7 +79,7 @@ pub fn main(init: std.process.Init) !void {
         .allocator = init.gpa,
         .jsonParser = jsonParser,
     };
-    const res = try jsonParser(ctx, "[-12.3e+99,false]");
+    const res = try jsonParser(ctx, "[ -12.3e+99, false ]");
     defer res.deinit(init.gpa);
     print("{f}\n", .{res});
 }
