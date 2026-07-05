@@ -8,12 +8,6 @@ const Allocator = std.mem.Allocator;
 
 pub const ZpcError = error{OutOfMemory};
 
-// Given two slices into the same backing slice return the one that reaches
-// furthest into the backing slice.
-pub fn furthest(a: []const u8, b: []const u8) []const u8 {
-    return if (@intFromPtr(a.ptr) > @intFromPtr(b.ptr)) a else b;
-}
-
 pub fn ZpcToken(comptime Tag: type) type {
     return struct {
         const Self = @This();
@@ -372,6 +366,10 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
 
         pub fn alt(parsers: []const *const Parser) Parser {
             const shim = struct {
+                fn furthest(a: []const u8, b: []const u8) []const u8 {
+                    return if (@intFromPtr(a.ptr) > @intFromPtr(b.ptr)) a else b;
+                }
+
                 fn altParser(ctx: Context, input: []const u8) ZpcError!Result {
                     var hwm = input;
                     inline for (parsers) |parser| {
