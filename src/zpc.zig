@@ -739,9 +739,9 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
 
         test recurse {
             const parseDigits = takeWhile(.DIGIT, .oneOrMore, std.ascii.isDigit);
-            const parseSpace = discard(takeWhile(Token.NOP, .zeroOrMore, std.ascii.isWhitespace));
+            const skipSpace = takeWhile(Token.NOP, .zeroOrMore, std.ascii.isWhitespace);
 
-            const parseAtom = right(parseSpace, alt(&.{
+            const parseAtom = right(skipSpace, alt(&.{
                 between(literal("("), recurse("expr"), literal(")")),
                 parseDigits,
             }));
@@ -750,7 +750,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                 seq(.TERM, &.{
                     parseAtom,
                     many(.MANY, .zeroOrMore, seq(.SEQ, &.{
-                        right(parseSpace, alt(&.{ keyword(.PLUS, "+"), keyword(.MINUS, "-") })),
+                        right(skipSpace, alt(&.{ keyword(.PLUS, "+"), keyword(.MINUS, "-") })),
                         parseAtom,
                     })),
                 });
