@@ -220,7 +220,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
         pub const Parser = ZpcParser(Context, Tag);
         pub const Mapper = fn (ctx: Context, result: Result) ZpcError!Result;
 
-        pub const ManyOptions = struct {
+        pub const Bounds = struct {
             const zeroOrMore: @This() = .{};
             const oneOrMore: @This() = .{ .min = 1 };
 
@@ -315,15 +315,15 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             );
         }
 
-        pub fn takeWhile(tag: Tag, options: ManyOptions, pred: Predicate) Parser {
-            assert(options.min <= options.max);
+        pub fn takeWhile(tag: Tag, bounds: Bounds, pred: Predicate) Parser {
+            assert(bounds.min <= bounds.max);
             const shim = struct {
                 fn someAreParser(_: Context, input: []const u8) ZpcError!Result {
-                    const len = @min(input.len, options.max);
+                    const len = @min(input.len, bounds.max);
                     var pos: usize = 0;
                     while (pos < len and pred(input[pos]))
                         pos += 1;
-                    if (pos < options.min)
+                    if (pos < bounds.min)
                         return .initFail(input[pos..], input);
                     return .initOk(.initSlice(tag, input[0..pos]), input[pos..]);
                 }
@@ -570,18 +570,18 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             );
         }
 
-        pub fn many(tag: Tag, options: ManyOptions, parser: Parser) Parser {
-            assert(options.min <= options.max);
+        pub fn many(tag: Tag, bounds: Bounds, parser: Parser) Parser {
+            assert(bounds.min <= bounds.max);
             const shim = struct {
                 fn manyParser(ctx: Context, input: []const u8) ZpcError!Result {
                     var list: Token.ArrayList = .empty;
                     errdefer Token.deinitArrayList(&list, ctx.allocator);
                     var tail = input;
                     while (true) {
-                        if (list.items.len >= options.max) break;
+                        if (list.items.len >= bounds.max) break;
                         const res = try parser(ctx, tail);
                         if (!res.matched()) {
-                            if (list.items.len >= options.min)
+                            if (list.items.len >= bounds.min)
                                 break;
                             Token.deinitArrayList(&list, ctx.allocator);
                             return .initFail(res.tok.fail, input);
