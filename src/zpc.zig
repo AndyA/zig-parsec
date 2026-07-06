@@ -34,7 +34,7 @@ pub fn ZpcToken(comptime Tag: type) type {
 
             pub fn format(self: @This(), writer: *Io.Writer) Io.Writer.Error!void {
                 try self.indent(writer);
-                try writer.print("{s}/{s}", .{ @tagName(self.token.tag), @tagName(self.token.value) });
+                try writer.print("{s}/{s}", .{ @tagName(self.token.value), @tagName(self.token.tag) });
 
                 switch (self.token.value) {
                     .nothing => {},
