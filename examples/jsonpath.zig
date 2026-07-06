@@ -20,8 +20,11 @@ fn makeJsonPathParser() P.Parser {
     const intParser = P.takeWhile(.NUMBER, .oneOrMore, std.ascii.isDigit);
 
     const charParser = P.alt(&.{
-        P.left(P.literal("\\"), P.takeWhile(.NONE, .one, zpc.predTrue())),
-        P.takeWhile(.NONE, .oneOrMore, zpc.predNot(zpc.predSet("\"\\"))),
+        P.left(P.literal("\\"), P.takeWhile(.NONE, .one, zpc.predNot(std.ascii.isControl))),
+        P.takeWhile(.NONE, .oneOrMore, zpc.predNot(zpc.predOr(
+            std.ascii.isControl,
+            zpc.predSet("\"\\"),
+        ))),
     });
 
     const stringParser = P.between(
@@ -61,9 +64,19 @@ pub fn main(init: std.process.Init) !void {
     const ctx: JsonContext = .{
         .allocator = init.gpa,
     };
-    const res = try jsonPathParser(ctx,
+    const paths: []const []const u8 = &.{
         \\$[0].$foo["\n"][*]
-    );
-    defer res.deinit(init.gpa);
-    print("{f}", .{res});
+        ,
+        \\$
+        ,
+        \\$.$
+        ,
+        \\$foo // FAIL
+    };
+    for (paths) |path| {
+        print("Path: {s}\n", .{path});
+        const res = try jsonPathParser(ctx, path);
+        defer res.deinit(init.gpa);
+        print("{f}\n", .{res});
+    }
 }
