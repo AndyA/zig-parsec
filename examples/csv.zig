@@ -10,9 +10,9 @@ const zpc = @import("zpc");
 
 const CsvTag = enum { NONE, QUOTED, BARE, ROW, CSV };
 
-const JsonContext = struct { allocator: Allocator };
+const CsvContext = struct { allocator: Allocator };
 
-const P = zpc.Zpc(JsonContext, CsvTag);
+const P = zpc.Zpc(CsvContext, CsvTag);
 
 fn makeCsvParser() P.Parser {
     const skipSpace = P.takeWhile(.NONE, .zeroOrMore, zpc.predAnd(
@@ -61,7 +61,7 @@ fn makeCsvParser() P.Parser {
 
 pub fn main(init: std.process.Init) !void {
     const jsonParser = makeCsvParser();
-    const ctx: JsonContext = .{ .allocator = init.gpa };
+    const ctx: CsvContext = .{ .allocator = init.gpa };
     const res = try jsonParser(ctx,
         \\"""Hello", "World""", Now
         \\1,2,3,4
