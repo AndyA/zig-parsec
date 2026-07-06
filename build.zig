@@ -3,6 +3,7 @@ const std = @import("std");
 const examples: []const []const u8 = &.{
     "csv",
     "json",
+    "jsonpath",
     "mule",
 };
 
