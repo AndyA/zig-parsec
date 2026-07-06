@@ -62,7 +62,7 @@ pub fn main(init: std.process.Init) !void {
         ,
         \\$
         ,
-        \\$.$.x$
+        \\$.$.x$.$x.$$
         ,
         \\$foo // FAIL
     };
