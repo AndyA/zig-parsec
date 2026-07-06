@@ -171,6 +171,15 @@ fn checkAndConsume(
 
 pub const Predicate = fn (char: u8) bool;
 
+pub fn predTrue() Predicate {
+    const shim = struct {
+        fn pred(_: u8) bool {
+            return true;
+        }
+    };
+    return shim.pred;
+}
+
 pub fn predAnd(a: Predicate, b: Predicate) Predicate {
     const shim = struct {
         fn pred(char: u8) bool {
@@ -227,7 +236,9 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
 
         pub const Bounds = struct {
             pub const zeroOrMore: @This() = .{};
+            pub const zeroOrOne: @This() = .{ .max = 1 };
             pub const oneOrMore: @This() = .{ .min = 1 };
+            pub const one: @This() = .{ .min = 1, .max = 1 };
 
             min: usize = 0,
             max: usize = std.math.maxInt(usize),
