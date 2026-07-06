@@ -49,11 +49,7 @@ fn makeJsonPathParser() P.Parser {
 
     const jsonPathParser = P.right(
         P.literal("$"),
-        P.many(
-            .PATH,
-            .zeroOrMore,
-            P.alt(&.{ subscriptParser, identParser }),
-        ),
+        P.many(.PATH, .zeroOrMore, P.alt(&.{ subscriptParser, identParser })),
     );
 
     return jsonPathParser;
