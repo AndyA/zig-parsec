@@ -59,7 +59,7 @@ fn makeJsonParser() P.Parser {
     const selfParser = P.recurse("jsonParser");
 
     const kvParser = P.seq(.KEYVALUE, &.{
-        stringParser,
+        P.right(skipSpace, stringParser),
         P.right(P.right(skipSpace, P.literal(":")), selfParser),
     });
 
@@ -114,7 +114,12 @@ pub fn main(init: std.process.Init) !void {
         .allocator = init.gpa,
         .jsonParser = jsonParser,
     };
-    const res = try jsonParser(ctx, "{\"things\": [ -12.3e+99, false, \"Hello\\n\", [] ]}");
+    const res = try jsonParser(ctx,
+        \\{ 
+        \\  "things": [ -12.3e+99, false, "Hello\n", [], {} ],
+        \\  "name": "Andy"
+        \\}
+    );
     defer res.deinit(init.gpa);
     print("{f}\n", .{res});
 }
