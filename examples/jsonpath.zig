@@ -70,7 +70,7 @@ pub fn main(init: std.process.Init) !void {
     };
 
     for (paths) |path| {
-        print("Path: {s}\n", .{path});
+        print("Path: {s}\n\n", .{path});
         const res = try jsonPathParser(ctx, path);
         defer res.deinit(init.gpa);
         print("{f}\n", .{res});
