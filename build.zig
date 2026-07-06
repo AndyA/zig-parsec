@@ -4,7 +4,6 @@ const examples: []const []const u8 = &.{
     "csv",
     "json",
     "jsonpath",
-    "mule",
 };
 
 pub fn build(b: *std.Build) void {
