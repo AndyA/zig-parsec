@@ -15,11 +15,11 @@ const JsonContext = struct { allocator: Allocator };
 const P = zpc.Zpc(JsonContext, CsvTag);
 
 fn makeCsvParser() P.Parser {
-    const skipSpace = P.takeWhile(
-        .NONE,
-        .zeroOrMore,
-        zpc.predAnd(std.ascii.isWhitespace, zpc.predNot(zpc.predSet("\r\n"))),
-    );
+    const skipSpace = P.takeWhile(.NONE, .zeroOrMore, zpc.predAnd(
+        std.ascii.isWhitespace,
+        zpc.predNot(zpc.predSet("\r\n")),
+    ));
+
     const charParser = P.alt(&.{
         P.literal("\"\""),
         P.takeWhile(.NONE, .oneOrMore, zpc.predNot(zpc.predEqual('\"'))),
