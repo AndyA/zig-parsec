@@ -60,6 +60,7 @@ pub fn main(init: std.process.Init) !void {
     const ctx: JsonContext = .{
         .allocator = init.gpa,
     };
+
     const paths: []const []const u8 = &.{
         \\$[0].$foo["\n"][*]
         ,
@@ -69,6 +70,7 @@ pub fn main(init: std.process.Init) !void {
         ,
         \\$foo // FAIL
     };
+
     for (paths) |path| {
         print("Path: {s}\n", .{path});
         const res = try jsonPathParser(ctx, path);
