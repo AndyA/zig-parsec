@@ -57,9 +57,7 @@ fn makeJsonPathParser() P.Parser {
 
 pub fn main(init: std.process.Init) !void {
     const jsonPathParser = makeJsonPathParser();
-    const ctx: JsonContext = .{
-        .allocator = init.gpa,
-    };
+    const ctx: JsonContext = .{ .allocator = init.gpa };
 
     const paths: []const []const u8 = &.{
         \\$[0].$foo["\n"][*]
