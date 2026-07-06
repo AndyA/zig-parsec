@@ -480,7 +480,10 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                     if (!lres.matched()) return .initFail(lres.tok.fail, input);
                     const rres = try rp(ctx, lres.rest);
                     defer rres.deinit(ctx.allocator);
-                    if (!rres.matched()) return .initFail(rres.tok.fail, input);
+                    if (!rres.matched()) {
+                        lres.deinit(ctx.allocator);
+                        return .initFail(rres.tok.fail, input);
+                    }
                     return .initOk(lres.tok.ok, rres.rest);
                 }
             };
