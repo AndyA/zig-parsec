@@ -45,18 +45,18 @@ fn makeJsonParser() P.Parser {
         posParser,
     }));
 
-    const recuseParser = P.recurse("jsonParser");
+    const selfParser = P.recurse("jsonParser");
 
     const arrayParser = P.seq(.ARRAY, &.{
         P.discard(P.literal("[")),
         P.alt(&.{
             P.discard(P.right(skipSpace, P.literal("]"))),
             P.flat(P.seq(.NONE, &.{
-                recuseParser,
+                selfParser,
                 P.flat(P.many(
                     .NONE,
                     .zeroOrMore,
-                    P.right(P.right(skipSpace, P.literal(",")), recuseParser),
+                    P.right(P.right(skipSpace, P.literal(",")), selfParser),
                 )),
                 P.discard(P.right(skipSpace, P.literal("]"))),
             })),
@@ -80,7 +80,7 @@ pub fn main(init: std.process.Init) !void {
         .allocator = init.gpa,
         .jsonParser = jsonParser,
     };
-    const res = try jsonParser(ctx, "[ -12.3e+99, false ]");
+    const res = try jsonParser(ctx, "[ -12.3e+99, false, [] ]");
     defer res.deinit(init.gpa);
     print("{f}\n", .{res});
 }

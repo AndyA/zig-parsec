@@ -30,7 +30,7 @@ pub fn ZpcToken(comptime Tag: type) type {
                 .nothing => {},
                 .slice => |slice| try writer.print(" \"{s}\"", .{slice}),
                 .list, .flat => |list| {
-                    try writer.print("({d}|", .{list.len});
+                    try writer.print("(", .{});
                     for (list) |item| try writer.print(" {f}", .{item});
                     try writer.print(" )", .{});
                 },
@@ -96,7 +96,7 @@ pub fn ZpcResult(comptime Tag: type) type {
         pub fn format(self: Self, writer: *Io.Writer) Io.Writer.Error!void {
             switch (self.tok) {
                 .ok => |ok| try writer.print("{f}", .{ok}),
-                .fail => try writer.print("FAIL", .{}),
+                .fail => |fail| try writer.print("FAIL at {s}", .{fail}),
             }
             if (self.rest.len > 10)
                 try writer.print(" rest: \"{s}...\"", .{self.rest[0..10]})
@@ -431,8 +431,8 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                             Token.deinitArrayList(&list, ctx.allocator);
                             return .initFail(res.tok.fail, input);
                         }
-                        try res.tok.ok.appendArrayList(ctx.allocator, &list);
                         tail = res.rest;
+                        try res.tok.ok.appendArrayList(ctx.allocator, &list);
                     }
 
                     return .initOk(try .initArrayList(ctx.allocator, tag, &list), tail);
@@ -582,8 +582,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                     var list: Token.ArrayList = .empty;
                     errdefer Token.deinitArrayList(&list, ctx.allocator);
                     var tail = input;
-                    while (true) {
-                        if (list.items.len >= bounds.max) break;
+                    while (list.items.len < bounds.max) {
                         const res = try parser(ctx, tail);
                         if (!res.matched()) {
                             if (list.items.len >= bounds.min)
@@ -591,8 +590,8 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                             Token.deinitArrayList(&list, ctx.allocator);
                             return .initFail(res.tok.fail, input);
                         }
-                        try res.tok.ok.appendArrayList(ctx.allocator, &list);
                         tail = res.rest;
+                        try res.tok.ok.appendArrayList(ctx.allocator, &list);
                     }
                     return .initOk(try .initArrayList(ctx.allocator, tag, &list), tail);
                 }
