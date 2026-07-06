@@ -26,6 +26,7 @@ const JsonContext = struct {
 };
 
 const P = zpc.Zpc(JsonContext, JsonTag);
+const skipSpace = P.takeWhile(.NONE, .zeroOrMore, std.ascii.isWhitespace);
 
 fn makeListParser(
     tag: JsonTag,
@@ -33,36 +34,29 @@ fn makeListParser(
     valueParser: P.Parser,
     closeParser: P.Parser,
 ) P.Parser {
-    const skipSpace = P.takeWhile(.NONE, .zeroOrMore, std.ascii.isWhitespace);
-
-    return P.seq(tag, &.{
-        P.discard(openParser),
-        P.alt(&.{
-            P.discard(P.right(skipSpace, closeParser)),
-            P.flat(P.seq(.NONE, &.{
+    return P.between(
+        openParser,
+        P.many(tag, .zeroOrOne, P.flat(P.seq(.NONE, &.{
+            valueParser,
+            P.flat(P.many(.NONE, .zeroOrMore, P.right(
+                P.right(skipSpace, P.literal(",")),
                 valueParser,
-                P.flat(P.many(
-                    .NONE,
-                    .zeroOrMore,
-                    P.right(P.right(skipSpace, P.literal(",")), valueParser),
-                )),
-                P.discard(P.right(skipSpace, closeParser)),
-            })),
-        }),
-    });
+            ))),
+        }))),
+        P.right(skipSpace, closeParser),
+    );
 }
 
 fn makeJsonParser() P.Parser {
-    const skipSpace = P.takeWhile(.NONE, .zeroOrMore, std.ascii.isWhitespace);
     const intParser = P.takeWhile(.NONE, .oneOrMore, std.ascii.isDigit);
 
     const posParser =
         P.left(
             P.left(intParser, P.optional(P.left(P.literal("."), intParser))),
-            P.left(
+            P.optional(P.left(
                 P.alt(&.{ P.literal("e"), P.literal("E") }),
                 P.left(P.optional(P.alt(&.{ P.literal("+"), P.literal("-") })), intParser),
-            ),
+            )),
         );
 
     const numParser = P.span(.NUMBER, P.alt(&.{
@@ -111,8 +105,8 @@ pub fn main(init: std.process.Init) !void {
         .jsonParser = jsonParser,
     };
     const res = try jsonParser(ctx,
-        \\{ 
-        \\  "things": [ -12.3e+99, false, "Hello\n", [], {} ],
+        \\{
+        \\  "things": [ -12.3e+99, 0, false, "Hello\n", [], {} ],
         \\  "name": "Andy"
         \\}
     );
