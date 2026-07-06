@@ -47,12 +47,10 @@ fn makeJsonPathParser() P.Parser {
         P.takeWhile(.NONE, .zeroOrMore, identRestPred),
     )));
 
-    const jsonPathParser = P.right(
+    return P.right(
         P.literal("$"),
         P.many(.PATH, .zeroOrMore, P.alt(&.{ subscriptParser, identParser })),
     );
-
-    return jsonPathParser;
 }
 
 pub fn main(init: std.process.Init) !void {
