@@ -27,6 +27,31 @@ const JsonContext = struct {
 
 const P = zpc.Zpc(JsonContext, JsonTag);
 
+fn makeListParser(
+    tag: JsonTag,
+    openParser: P.Parser,
+    valueParser: P.Parser,
+    closeParser: P.Parser,
+) P.Parser {
+    const skipSpace = P.takeWhile(.NONE, .zeroOrMore, std.ascii.isWhitespace);
+
+    return P.seq(tag, &.{
+        P.discard(openParser),
+        P.alt(&.{
+            P.discard(P.right(skipSpace, closeParser)),
+            P.flat(P.seq(.NONE, &.{
+                valueParser,
+                P.flat(P.many(
+                    .NONE,
+                    .zeroOrMore,
+                    P.right(P.right(skipSpace, P.literal(",")), valueParser),
+                )),
+                P.discard(P.right(skipSpace, closeParser)),
+            })),
+        }),
+    });
+}
+
 fn makeJsonParser() P.Parser {
     const skipSpace = P.takeWhile(.NONE, .zeroOrMore, std.ascii.isWhitespace);
     const intParser = P.takeWhile(.NONE, .oneOrMore, std.ascii.isDigit);
@@ -63,37 +88,8 @@ fn makeJsonParser() P.Parser {
         P.right(P.right(skipSpace, P.literal(":")), selfParser),
     });
 
-    const objectParser = P.seq(.OBJECT, &.{
-        P.discard(P.literal("{")),
-        P.alt(&.{
-            P.discard(P.right(skipSpace, P.literal("}"))),
-            P.flat(P.seq(.NONE, &.{
-                kvParser,
-                P.flat(P.many(
-                    .NONE,
-                    .zeroOrMore,
-                    P.right(P.right(skipSpace, P.literal(",")), kvParser),
-                )),
-                P.discard(P.right(skipSpace, P.literal("}"))),
-            })),
-        }),
-    });
-
-    const arrayParser = P.seq(.ARRAY, &.{
-        P.discard(P.literal("[")),
-        P.alt(&.{
-            P.discard(P.right(skipSpace, P.literal("]"))),
-            P.flat(P.seq(.NONE, &.{
-                selfParser,
-                P.flat(P.many(
-                    .NONE,
-                    .zeroOrMore,
-                    P.right(P.right(skipSpace, P.literal(",")), selfParser),
-                )),
-                P.discard(P.right(skipSpace, P.literal("]"))),
-            })),
-        }),
-    });
+    const objectParser = makeListParser(.OBJECT, P.literal("{"), kvParser, P.literal("}"));
+    const arrayParser = makeListParser(.ARRAY, P.literal("["), selfParser, P.literal("]"));
 
     const jsonParser = P.right(skipSpace, P.alt(&.{
         P.keyword(.FALSE, "false"),
