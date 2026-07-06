@@ -16,6 +16,52 @@ pub fn ZpcToken(comptime Tag: type) type {
 
         pub const nothing: Self = .{ .tag = NOP, .value = .{ .nothing = {} } };
 
+        pub const Formatter = struct {
+            token: *const Self,
+            pretty: bool = false,
+            depth: usize = 0,
+
+            fn indent(self: @This(), writer: *Io.Writer) Io.Writer.Error!void {
+                if (self.pretty)
+                    for (0..self.depth) |_|
+                        try writer.print("    ", .{});
+            }
+
+            fn newLine(self: @This(), writer: *Io.Writer) Io.Writer.Error!void {
+                if (self.pretty)
+                    try writer.print("\n", .{});
+            }
+
+            pub fn format(self: @This(), writer: *Io.Writer) Io.Writer.Error!void {
+                try self.indent(writer);
+                try writer.print("{s}/{s}", .{ @tagName(self.token.tag), @tagName(self.token.value) });
+
+                switch (self.token.value) {
+                    .nothing => {},
+                    .slice => |slice| try writer.print(" \"{s}\"", .{slice}),
+                    .list, .flat => |list| {
+                        try writer.print("(", .{});
+                        if (list.len != 0) {
+                            try self.newLine(writer);
+                            for (list, 0..) |item, i| {
+                                const child: Formatter = .{
+                                    .token = &item,
+                                    .pretty = self.pretty,
+                                    .depth = self.depth + 1,
+                                };
+                                try writer.print("{f}", .{child});
+                                if (!self.pretty and i != list.len - 1)
+                                    try writer.print(", ", .{});
+                            }
+                            try self.indent(writer);
+                        }
+                        try writer.print(")", .{});
+                    },
+                }
+                try self.newLine(writer);
+            }
+        };
+
         tag: Tag = NOP,
         value: union(enum) {
             nothing: void,
@@ -25,16 +71,7 @@ pub fn ZpcToken(comptime Tag: type) type {
         },
 
         pub fn format(self: Self, writer: *Io.Writer) Io.Writer.Error!void {
-            try writer.print("{s}/{s}", .{ @tagName(self.tag), @tagName(self.value) });
-            switch (self.value) {
-                .nothing => {},
-                .slice => |slice| try writer.print(" \"{s}\"", .{slice}),
-                .list, .flat => |list| {
-                    try writer.print("(", .{});
-                    for (list) |item| try writer.print(" {f}", .{item});
-                    try writer.print(" )", .{});
-                },
-            }
+            try (Formatter{ .token = &self }).format(writer);
         }
 
         pub fn initSlice(tag: Tag, slice: []const u8) Self {
@@ -87,6 +124,39 @@ pub fn ZpcToken(comptime Tag: type) type {
 pub fn ZpcResult(comptime Tag: type) type {
     return struct {
         const Self = @This();
+
+        pub const Formatter = struct {
+            token: *const Self,
+            pretty: bool = false,
+
+            pub fn format(self: @This(), writer: *Io.Writer) Io.Writer.Error!void {
+                const token = self.token;
+                switch (token.tok) {
+                    .ok => |ok| {
+                        try (ZpcToken(Tag).Formatter{
+                            .token = &ok,
+                            .pretty = self.pretty,
+                        }).format(writer);
+                    },
+                    .fail => |fail| {
+                        try writer.print("FAIL at {s}", .{fail});
+                        if (self.pretty)
+                            try writer.print("\n", .{});
+                    },
+                }
+
+                if (token.rest.len != 0) {
+                    if (!self.pretty)
+                        try writer.print(" ", .{});
+
+                    if (token.rest.len > 10)
+                        try writer.print("rest: \"{s}...\"", .{token.rest[0..10]})
+                    else
+                        try writer.print("rest: \"{s}\"", .{token.rest});
+                }
+            }
+        };
+
         tok: union(enum) {
             ok: ZpcToken(Tag),
             fail: []const u8,
@@ -94,14 +164,7 @@ pub fn ZpcResult(comptime Tag: type) type {
         rest: []const u8,
 
         pub fn format(self: Self, writer: *Io.Writer) Io.Writer.Error!void {
-            switch (self.tok) {
-                .ok => |ok| try writer.print("{f}", .{ok}),
-                .fail => |fail| try writer.print("FAIL at {s}", .{fail}),
-            }
-            if (self.rest.len > 10)
-                try writer.print(" rest: \"{s}...\"", .{self.rest[0..10]})
-            else
-                try writer.print(" rest: \"{s}\"", .{self.rest});
+            try (Formatter{ .token = &self, .pretty = true }).format(writer);
         }
 
         pub fn initFail(at: []const u8, rest: []const u8) Self {

@@ -107,7 +107,9 @@ pub fn main(init: std.process.Init) !void {
     const res = try jsonParser(ctx,
         \\{
         \\  "things": [ -12.3e+99, 0, false, "Hello\n", [], {} ],
-        \\  "name": "Andy"
+        \\  "name": "Andy",
+        \\  "tags": ["A", "B", "C", ["nested", ["deeper"]]],
+        \\  "empty": [""]
         \\}
     );
     defer res.deinit(init.gpa);
