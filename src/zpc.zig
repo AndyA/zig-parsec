@@ -25,7 +25,7 @@ pub fn ZpcToken(comptime Tag: type) type {
         },
 
         pub fn format(self: Self, writer: *Io.Writer) Io.Writer.Error!void {
-            try writer.print("{s} {s}", .{ @tagName(self.tag), @tagName(self.value) });
+            try writer.print("{s}/{s}", .{ @tagName(self.tag), @tagName(self.value) });
             switch (self.value) {
                 .nothing => {},
                 .slice => |slice| try writer.print(" \"{s}\"", .{slice}),
