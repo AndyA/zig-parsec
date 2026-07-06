@@ -149,8 +149,8 @@ pub fn ZpcResult(comptime Tag: type) type {
                     if (!self.pretty)
                         try writer.print(" ", .{});
 
-                    if (token.rest.len > 10)
-                        try writer.print("rest: \"{s}...\"", .{token.rest[0..10]})
+                    if (token.rest.len > 30)
+                        try writer.print("rest: \"{s}...\"", .{token.rest[0..30]})
                     else
                         try writer.print("rest: \"{s}\"", .{token.rest});
                 }
