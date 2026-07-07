@@ -51,10 +51,10 @@ fn makeExpressionParser() P.Parser {
 
     const unaryParser = P.alt(&.{
         P.seq(.UNOP, &.{
-            P.lower(P.many(.UNOPCHAIN, .oneOrMore, P.right(skipSpace, P.alt(&.{
+            P.many(.UNOPCHAIN, .oneOrMore, P.right(skipSpace, P.alt(&.{
                 P.keyword(.NEG, "-"),
                 P.keyword(.NOT, "~"),
-            })))),
+            }))),
             atomParser,
         }),
         atomParser,
@@ -74,32 +74,21 @@ fn makeExpressionParser() P.Parser {
     return addSubParser;
 }
 
-fn evalUnary(tag: Tag, rhs: i64) !i64 {
-    return switch (tag) {
-        .NEG => -rhs,
-        .NOT => ~rhs,
-        else => unreachable,
-    };
-}
-
 fn eval(token: P.Token) !i64 {
     return eval: switch (token.tag) {
         .NUMBER => try std.fmt.parseInt(i64, token.value.slice, 10),
         .UNOP => {
-            const rhs = try eval(token.other());
+            var res = try eval(token.other());
             const head = token.head();
-            break :eval op: switch (head.tag) {
-                .UNOPCHAIN => {
-                    var res = rhs;
-                    const kids = head.children();
-                    for (0..kids.len) |i| {
-                        const idx = kids.len - 1 - i;
-                        res = try evalUnary(kids[idx].tag, res);
-                    }
-                    break :op res;
-                },
-                else => |tag| evalUnary(tag, rhs),
-            };
+            assert(head.tag == .UNOPCHAIN);
+            const kids = head.children();
+            for (0..kids.len) |i|
+                res = switch (kids[kids.len - 1 - i].tag) {
+                    .NEG => -res,
+                    .NOT => ~res,
+                    else => unreachable,
+                };
+            break :eval res;
         },
         .BINOPCHAIN => {
             var res = try eval(token.head());
