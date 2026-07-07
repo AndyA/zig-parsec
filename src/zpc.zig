@@ -332,7 +332,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
         pub const Parser = ZpcParser(Context, Tag);
         pub const Mapper = fn (ctx: Context, result: Result) ZpcError!Result;
 
-        pub const Bounds = struct {
+        pub const Quantifier = struct {
             pub const zeroOrMore: @This() = .{};
             pub const zeroOrOne: @This() = .{ .max = 1 };
             pub const oneOrMore: @This() = .{ .min = 1 };
@@ -429,7 +429,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             );
         }
 
-        pub fn takeWhile(tag: Tag, bounds: Bounds, pred: Predicate) Parser {
+        pub fn takeWhile(tag: Tag, bounds: Quantifier, pred: Predicate) Parser {
             assert(bounds.min <= bounds.max);
             const shim = struct {
                 fn someAreParser(_: Context, input: []const u8) ZpcError!Result {
@@ -687,7 +687,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             );
         }
 
-        pub fn many(tag: Tag, bounds: Bounds, parser: Parser) Parser {
+        pub fn many(tag: Tag, bounds: Quantifier, parser: Parser) Parser {
             assert(bounds.min <= bounds.max);
             const shim = struct {
                 fn manyParser(ctx: Context, input: []const u8) ZpcError!Result {
