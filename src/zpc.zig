@@ -126,28 +126,25 @@ pub fn ZpcToken(comptime Tag: type) type {
             list.deinit(alloc);
         }
 
-        pub fn head(self: Self) Self {
+        pub fn children(self: Self) []const Self {
             return switch (self.value) {
-                .flat, .list => |list| list[0],
+                .flat, .list => |l| l,
                 else => unreachable,
             };
+        }
+
+        pub fn head(self: Self) Self {
+            return self.children()[0];
         }
 
         pub fn tail(self: Self) []const Self {
-            return switch (self.value) {
-                .flat, .list => |list| list[1..],
-                else => unreachable,
-            };
+            return self.children()[1..];
         }
 
         pub fn other(self: Self) Self {
-            switch (self.value) {
-                .flat, .list => |list| {
-                    assert(list.len == 2);
-                    return list[1];
-                },
-                else => unreachable,
-            }
+            const l = self.children();
+            assert(l.len == 2);
+            return l[1];
         }
     };
 }
