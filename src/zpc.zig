@@ -344,13 +344,13 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
 
         pub fn keyword(tag: Tag, str: []const u8) Parser {
             const shim = struct {
-                fn litParser(_: Context, input: []const u8) ZpcError!Result {
+                fn keywordParser(_: Context, input: []const u8) ZpcError!Result {
                     if (input.len >= str.len and std.mem.eql(u8, input[0..str.len], str))
                         return .initOk(.initSlice(tag, str), input[str.len..]);
                     return .initFailHere(input);
                 }
             };
-            return shim.litParser;
+            return shim.keywordParser;
         }
 
         pub fn literal(str: []const u8) Parser {

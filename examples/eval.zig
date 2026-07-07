@@ -33,10 +33,10 @@ const P = zpc.Zpc(Context, Tag);
 
 const skipSpace = P.takeWhile(.NONE, .zeroOrMore, std.ascii.isWhitespace);
 
-fn makeBinOpParser(upParser: P.Parser, opParser: P.Parser) P.Parser {
-    return P.lower(P.seq(.BINOPCHAIN, &.{ upParser, P.flat(
+fn makeBinOpParser(valueParser: P.Parser, opParser: P.Parser) P.Parser {
+    return P.lower(P.seq(.BINOPCHAIN, &.{ valueParser, P.flat(
         P.many(.NONE, .zeroOrMore, P.seq(.BINOP, &.{
-            P.right(skipSpace, opParser), upParser,
+            P.right(skipSpace, opParser), valueParser,
         })),
     ) }));
 }
