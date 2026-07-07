@@ -10,7 +10,7 @@ const zpc = @import("zpc");
 
 const Tag = enum(u8) {
     NONE,
-    NUMBER,
+    INT,
     UNOPCHAIN,
     UNOP,
     BINOPCHAIN,
@@ -42,7 +42,7 @@ fn makeBinOpParser(upParser: P.Parser, opParser: P.Parser) P.Parser {
 }
 
 fn makeExpressionParser() P.Parser {
-    const intParser = P.takeWhile(.NUMBER, .oneOrMore, std.ascii.isDigit);
+    const intParser = P.takeWhile(.INT, .oneOrMore, std.ascii.isDigit);
 
     const atomParser = P.right(skipSpace, P.alt(&.{
         P.between(P.literal("("), P.recurse("expr"), P.right(skipSpace, P.literal(")"))),
@@ -76,7 +76,7 @@ fn makeExpressionParser() P.Parser {
 
 fn eval(token: P.Token) !i64 {
     return eval: switch (token.tag) {
-        .NUMBER => try std.fmt.parseInt(i64, token.value.slice, 10),
+        .INT => try std.fmt.parseInt(i64, token.value.slice, 10),
         .UNOP => {
             var res = try eval(token.other());
             const head = token.head();
