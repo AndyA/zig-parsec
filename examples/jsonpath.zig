@@ -8,7 +8,17 @@ const Allocator = std.mem.Allocator;
 
 const zpc = @import("zpc");
 
-const JsonPathTag = enum { NONE, NUMBER, STRING, IDENT, PATH, WILD };
+const JsonPathTag = enum {
+    NONE,
+    NUMBER,
+    STRING,
+    IDENT,
+    PATH,
+    WILD,
+    DOT,
+    SEARCH,
+    SEGMENT,
+};
 
 const JsonContext = struct {
     allocator: Allocator,
@@ -42,14 +52,34 @@ fn makeJsonPathParser() P.Parser {
     const identFirstPred = zpc.predOr(std.ascii.isAlphabetic, zpc.predSet("$_"));
     const identRestPred = zpc.predOr(identFirstPred, std.ascii.isDigit);
 
-    const identParser = P.right(P.literal("."), P.span(.IDENT, P.left(
+    const identParser = P.span(.IDENT, P.left(
         P.takeWhile(.NONE, .one, identFirstPred),
         P.takeWhile(.NONE, .zeroOrMore, identRestPred),
-    )));
+    ));
+
+    const refParser = P.alt(&.{
+        subscriptParser,
+        identParser,
+        P.keyword(.WILD, "*"),
+    });
+
+    const segmentParser = P.alt(&.{
+        // ..foo    SEGMENT(SEARCH, IDENT)
+        // ..[sub]  SEGMENT(SEARCH, NUMBER | STRING | WILD)
+        P.seq(.SEGMENT, &.{ P.keyword(.SEARCH, ".."), refParser }),
+        // .foo     SEGMENT(DOT, IDENT)
+        // .[sub]   SEGMENT(DOT, NUMBER | STRING | WILD)
+        P.seq(.SEGMENT, &.{ P.keyword(.DOT, "."), refParser }),
+        // [sub]    SEGMENT(DOT, NUMBER | STRING | WILD)
+        P.seq(.SEGMENT, &.{ P.always(.DOT), subscriptParser }),
+    });
 
     return P.right(
         P.literal("$"),
-        P.many(.PATH, .zeroOrMore, P.alt(&.{ subscriptParser, identParser })),
+        P.left(
+            P.many(.PATH, .zeroOrMore, segmentParser),
+            P.eof(),
+        ),
     );
 }
 
@@ -65,6 +95,10 @@ pub fn main(init: std.process.Init) !void {
         \\$.$.x$.$x.$$
         ,
         \\$foo // FAIL
+        ,
+        \\$..*
+        ,
+        \\$..[*]
     };
 
     for (paths) |path| {
