@@ -88,7 +88,7 @@ pub fn main(init: std.process.Init) !void {
     const ctx: JsonContext = .{ .allocator = init.gpa };
 
     const paths: []const []const u8 = &.{
-        \\$[0].$foo["\n"][*].$
+        \\$[0].$foo["\n"].[*]..$.*
         ,
         \\$
         ,
