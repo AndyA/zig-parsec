@@ -74,12 +74,10 @@ fn makeJsonPathParser() P.Parser {
         P.seq(.SEGMENT, &.{ P.always(.DOT, "."), subscriptParser }),
     });
 
-    return P.right(
+    return P.between(
         P.literal("$"),
-        P.left(
-            P.many(.PATH, .zeroOrMore, segmentParser),
-            P.eof(),
-        ),
+        P.many(.PATH, .zeroOrMore, segmentParser),
+        P.eof(),
     );
 }
 
