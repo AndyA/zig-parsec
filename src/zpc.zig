@@ -983,15 +983,16 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             );
         }
 
-        pub fn reparse(lowerParser: Parser, upperParser: Parser) Parser {
+        pub fn reparse(tag: Tag, lowerParser: Parser, upperParser: Parser) Parser {
             const shim = struct {
                 fn reparseParser(ctx: Context, input: []const u8) ZpcError!Result {
-                    const lower_res = try span(Token.NOP, lowerParser)(ctx, input);
+                    const lower_res = try span(tag, lowerParser)(ctx, input);
                     defer lower_res.deinit(ctx.allocator);
                     if (!lower_res.matched())
                         return lower_res;
                     var upper_res = try left(upperParser, eof())(ctx, lower_res.tok.ok.value.slice);
-                    // if (upper_res.matched())
+                    if (!upper_res.matched())
+                        return lower_res;
                     upper_res.rest = lower_res.rest;
                     return upper_res;
                 }
@@ -1000,8 +1001,8 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
         }
 
         test reparse {
-            const parseIdent = takeWhile(.IDENT, .oneOrMore, std.ascii.isAlphabetic);
-            const parseKeyword = reparse(parseIdent, alt(&.{
+            const parseIdent = takeWhile(Token.NOP, .oneOrMore, std.ascii.isAlphabetic);
+            const parseKeyword = reparse(.IDENT, parseIdent, alt(&.{
                 keyword(.FOO, "Foo"),
                 keyword(.BAR, "Bar"),
             }));
@@ -1017,6 +1018,12 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                 ctx,
                 .initOk(.initSlice(.BAR, "Bar"), " Hello"),
                 try parseKeyword(ctx, "Bar Hello"),
+            );
+
+            try checkAndConsume(
+                ctx,
+                .initOk(.initSlice(.IDENT, "FooBar"), " Hello"),
+                try parseKeyword(ctx, "FooBar Hello"),
             );
         }
 
