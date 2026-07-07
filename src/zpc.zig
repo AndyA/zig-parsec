@@ -346,22 +346,22 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             );
         }
 
-        pub fn always(tag: Tag) Parser {
+        pub fn always(tag: Tag, frag: []const u8) Parser {
             const shim = struct {
                 fn alwaysParser(_: Context, input: []const u8) ZpcError!Result {
-                    return .initOk(.initSlice(tag, ""), input);
+                    return .initOk(.initSlice(tag, frag), input);
                 }
             };
             return shim.alwaysParser;
         }
 
         test always {
-            const parseAlways = always(.FOO);
+            const parseAlways = always(.FOO, "foo");
             const ctx: TestContext = .{ .allocator = std.testing.allocator };
 
             try checkAndConsume(
                 ctx,
-                .initOk(.initSlice(.FOO, ""), "Hello, World"),
+                .initOk(.initSlice(.FOO, "foo"), "Hello, World"),
                 try parseAlways(ctx, "Hello, World"),
             );
         }

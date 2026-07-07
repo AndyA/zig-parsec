@@ -10,14 +10,14 @@ const zpc = @import("zpc");
 
 const JsonPathTag = enum {
     NONE,
-    NUMBER,
-    STRING,
-    IDENT,
     PATH,
-    WILD,
+    SEGMENT,
     DOT,
     SEARCH,
-    SEGMENT,
+    IDENT,
+    NUMBER,
+    STRING,
+    WILD,
 };
 
 const JsonContext = struct {
@@ -71,7 +71,7 @@ fn makeJsonPathParser() P.Parser {
         // .[sub]   SEGMENT(DOT, NUMBER | STRING | WILD)
         P.seq(.SEGMENT, &.{ P.keyword(.DOT, "."), refParser }),
         // [sub]    SEGMENT(DOT, NUMBER | STRING | WILD)
-        P.seq(.SEGMENT, &.{ P.always(.DOT), subscriptParser }),
+        P.seq(.SEGMENT, &.{ P.always(.DOT, "."), subscriptParser }),
     });
 
     return P.right(
