@@ -88,10 +88,7 @@ pub fn main(init: std.process.Init) !void {
     const ctx: Context = .{ .allocator = init.gpa, .expr = exprParser };
 
     const expressions: []const []const u8 = &.{
-        "123",
-        "-123",
-        "(0)",
-        "(100 + 2 - 11) / 3",
+        "(100 + 2 - 9) / 3 + 11",
     };
 
     for (expressions) |path| {
