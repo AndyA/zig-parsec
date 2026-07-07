@@ -1001,11 +1001,14 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
         }
 
         test reparse {
-            const parseIdent = takeWhile(Token.NOP, .oneOrMore, std.ascii.isAlphabetic);
-            const parseKeyword = reparse(.IDENT, parseIdent, alt(&.{
-                keyword(.FOO, "Foo"),
-                keyword(.BAR, "Bar"),
-            }));
+            const parseKeyword = reparse(
+                .IDENT,
+                takeWhile(Token.NOP, .oneOrMore, std.ascii.isAlphabetic),
+                alt(&.{
+                    keyword(.FOO, "Foo"),
+                    keyword(.BAR, "Bar"),
+                }),
+            );
             const ctx: TestContext = .{ .allocator = std.testing.allocator };
 
             try checkAndConsume(
