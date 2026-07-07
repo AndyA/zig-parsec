@@ -860,6 +860,20 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             );
         }
 
+        pub fn advances(parser: Parser) Parser {
+            const shim = struct {
+                fn advancesParser(ctx: Context, input: []const u8) ZpcError!Result {
+                    const res = parser(ctx, input);
+                    if (res.matched() and input.ptr == res.rest.ptr)
+                        return .initFailHere(input);
+                    return res;
+                }
+            };
+            return shim.advancesParser;
+        }
+
+        test advances {}
+
         // Call a parser that is pointed to by a field on the context.
         pub fn recurse(field_name: []const u8) Parser {
             const shim = struct {
