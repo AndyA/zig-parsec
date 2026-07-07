@@ -63,7 +63,7 @@ pub fn ZpcToken(comptime Tag: type) type {
         };
 
         tag: Tag = NOP,
-        value: union(enum) {
+        value: union(enum(u8)) {
             nothing: void,
             slice: []const u8,
             list: []const Self,
@@ -96,7 +96,7 @@ pub fn ZpcToken(comptime Tag: type) type {
                 .nothing => {},
                 .slice, .list => try array.append(alloc, self),
                 .flat => |flat| {
-                    defer alloc.free(flat); // shallow
+                    defer self.deinitShallow(alloc);
                     try array.appendSlice(alloc, flat);
                 },
             }
@@ -105,6 +105,13 @@ pub fn ZpcToken(comptime Tag: type) type {
         pub fn deinit(self: Self, alloc: Allocator) void {
             switch (self.value) {
                 .list, .flat => |list| deinitList(list, alloc),
+                .nothing, .slice => {},
+            }
+        }
+
+        pub fn deinitShallow(self: Self, alloc: Allocator) void {
+            switch (self.value) {
+                .list, .flat => |list| alloc.free(list),
                 .nothing, .slice => {},
             }
         }
@@ -186,6 +193,13 @@ pub fn ZpcResult(comptime Tag: type) type {
             }
         }
 
+        pub fn deinitShallow(self: Self, alloc: Allocator) void {
+            switch (self.tok) {
+                .ok => |ok| ok.deinitShallow(alloc),
+                .fail => {},
+            }
+        }
+
         pub fn matched(self: Self) bool {
             return self.tok == .ok;
         }
@@ -196,7 +210,7 @@ pub fn ZpcParser(comptime Context: type, comptime Tag: type) type {
     return fn (ctx: Context, input: []const u8) ZpcError!ZpcResult(Tag);
 }
 
-const TestTag = enum {
+const TestTag = enum(u8) {
     // Don't call it NOP so we don't use it by mistake.
     NOT_NOP,
     HELLO,
@@ -446,7 +460,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
         pub fn alt(parsers: []const *const Parser) Parser {
             const shim = struct {
                 fn furthest(a: []const u8, b: []const u8) []const u8 {
-                    return if (@intFromPtr(a.ptr) > @intFromPtr(b.ptr)) a else b;
+                    return if (a.len < b.len) a else b;
                 }
 
                 fn altParser(ctx: Context, input: []const u8) ZpcError!Result {
@@ -889,6 +903,56 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                 ctx,
                 .initFailHere("."),
                 try parseAdvances(ctx, "."),
+            );
+        }
+
+        // If we receive a single element list lower it to the first item
+        pub fn lower(parser: Parser) Parser {
+            const shim = struct {
+                fn lowerParser(ctx: Context, input: []const u8) ZpcError!Result {
+                    const res = try parser(ctx, input);
+                    if (res.matched()) {
+                        switch (res.tok.ok.value) {
+                            .nothing, .slice => {},
+                            .flat, .list => |list| {
+                                if (list.len == 1) {
+                                    defer res.deinitShallow(ctx.allocator);
+                                    return .initOk(list[0], res.rest);
+                                }
+                            },
+                        }
+                    }
+                    return res;
+                }
+            };
+            return shim.lowerParser;
+        }
+
+        test lower {
+            const parseLower = lower(many(.MULTI, .oneOrMore, keyword(.FOO, "Foo")));
+            const parseFlatLower = flat(parseLower);
+            const ctx: TestContext = .{ .allocator = std.testing.allocator };
+
+            try checkAndConsume(
+                ctx,
+                .initOk(.initList(.MULTI, &.{
+                    .initSlice(.FOO, "Foo"),
+                    .initSlice(.FOO, "Foo"),
+                    .initSlice(.FOO, "Foo"),
+                }), "."),
+                try parseLower(ctx, "FooFooFoo."),
+            );
+
+            try checkAndConsume(
+                ctx,
+                .initOk(.initSlice(.FOO, "Foo"), "."),
+                try parseLower(ctx, "Foo."),
+            );
+
+            try checkAndConsume(
+                ctx,
+                .initOk(.initSlice(.FOO, "Foo"), "."),
+                try parseFlatLower(ctx, "Foo."),
             );
         }
 

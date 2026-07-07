@@ -8,7 +8,7 @@ const Allocator = std.mem.Allocator;
 
 const zpc = @import("zpc");
 
-const JsonTag = enum {
+const JsonTag = enum(u8) {
     NONE,
     NUMBER,
     STRING,

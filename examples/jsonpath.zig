@@ -8,7 +8,7 @@ const Allocator = std.mem.Allocator;
 
 const zpc = @import("zpc");
 
-const JsonPathTag = enum {
+const JsonPathTag = enum(u8) {
     NONE,
     PATH,
     SEGMENT,

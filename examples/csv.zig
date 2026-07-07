@@ -8,7 +8,7 @@ const Allocator = std.mem.Allocator;
 
 const zpc = @import("zpc");
 
-const CsvTag = enum { NONE, QUOTED, BARE, ROW, CSV };
+const CsvTag = enum(u8) { NONE, QUOTED, BARE, ROW, CSV };
 
 const CsvContext = struct { allocator: Allocator };
 
