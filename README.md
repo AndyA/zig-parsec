@@ -6,6 +6,7 @@
 - ~~what to do when progress stops?~~ `advances()`
 - how to parse e.g. YAML, Python?
 - `lookup()` - bridge between toking and parsing; looks up a parsed span against a keyword table
+- or `reparse(lower: Parser, upper: Parser)` - parse, span, reparse
 
 ## Comptime Parsing
 
