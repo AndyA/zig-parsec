@@ -22,6 +22,12 @@ const Tag = enum(u8) {
     MOD,
     ADD,
     SUB,
+    LT,
+    LTE,
+    GT,
+    GTE,
+    EQ,
+    NE,
 };
 
 const Context = struct {
@@ -71,7 +77,22 @@ fn makeExpressionParser() P.Parser {
         P.keyword(.SUB, "-"),
     }));
 
-    return addSubParser;
+    const cmpParser = makeBinOpParser(addSubParser, P.alt(&.{
+        P.keyword(.NE, "!="),
+        P.keyword(.NE, "<>"),
+        P.keyword(.LTE, "<="),
+        P.keyword(.GTE, ">="),
+        P.keyword(.LT, "<"),
+        P.keyword(.GT, ">"),
+        P.keyword(.EQ, "=="),
+        P.keyword(.EQ, "="),
+    }));
+
+    return cmpParser;
+}
+
+fn boolInt(b: bool) i64 {
+    return if (b) 1 else 0;
 }
 
 fn eval(token: P.Token) !i64 {
@@ -101,6 +122,12 @@ fn eval(token: P.Token) !i64 {
                     .MUL => res * rhs,
                     .DIV => @divTrunc(res, rhs),
                     .MOD => @mod(res, rhs),
+                    .LTE => boolInt(res <= rhs),
+                    .LT => boolInt(res < rhs),
+                    .GTE => boolInt(res > rhs),
+                    .GT => boolInt(res > rhs),
+                    .EQ => boolInt(res == rhs),
+                    .NE => boolInt(res != rhs),
                     else => unreachable,
                 };
             }
@@ -118,6 +145,7 @@ pub fn main(init: std.process.Init) !void {
     const expressions: []const []const u8 = &.{
         "-1 + 3",
         "--(100 + 2 - 9) / 3 - ~10",
+        "3 < 5",
     };
 
     for (expressions) |path| {
