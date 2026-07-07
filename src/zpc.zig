@@ -863,16 +863,34 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
         pub fn advances(parser: Parser) Parser {
             const shim = struct {
                 fn advancesParser(ctx: Context, input: []const u8) ZpcError!Result {
-                    const res = parser(ctx, input);
-                    if (res.matched() and input.ptr == res.rest.ptr)
+                    const res = try parser(ctx, input);
+                    if (res.matched() and input.ptr == res.rest.ptr) {
+                        res.deinit(ctx.allocator);
                         return .initFailHere(input);
+                    }
                     return res;
                 }
             };
             return shim.advancesParser;
         }
 
-        test advances {}
+        test advances {
+            const parseDigits = takeWhile(.DIGIT, .zeroOrMore, std.ascii.isDigit);
+            const parseAdvances = advances(parseDigits);
+            const ctx: TestContext = .{ .allocator = std.testing.allocator };
+
+            try checkAndConsume(
+                ctx,
+                .initOk(.initSlice(.DIGIT, ""), "."),
+                try parseDigits(ctx, "."),
+            );
+
+            try checkAndConsume(
+                ctx,
+                .initFailHere("."),
+                try parseAdvances(ctx, "."),
+            );
+        }
 
         // Call a parser that is pointed to by a field on the context.
         pub fn recurse(field_name: []const u8) Parser {

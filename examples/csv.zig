@@ -38,13 +38,13 @@ fn makeCsvParser() P.Parser {
 
     const valueParser = P.right(skipSpace, P.alt(&.{ stringParser, bareParser }));
 
-    const rowParser = P.seq(.ROW, &.{
+    const rowParser = P.advances(P.seq(.ROW, &.{
         valueParser,
         P.flat(P.many(.NONE, .zeroOrMore, P.right(
             P.right(skipSpace, P.literal(",")),
             valueParser,
         ))),
-    });
+    }));
 
     const eolParser = P.takeWhile(.NONE, .oneOrMore, zpc.predSet("\r\n"));
 
@@ -56,7 +56,10 @@ fn makeCsvParser() P.Parser {
         ))),
     });
 
-    return csvParser;
+    return P.left(
+        csvParser,
+        P.takeWhile(.NONE, .zeroOrMore, std.ascii.isWhitespace),
+    );
 }
 
 pub fn main(init: std.process.Init) !void {
@@ -65,7 +68,6 @@ pub fn main(init: std.process.Init) !void {
     const res = try jsonParser(ctx,
         \\"""Hello", "World""", Now
         \\1,2,3,4
-        \\
     );
     defer res.deinit(init.gpa);
     print("{f}", .{res});
