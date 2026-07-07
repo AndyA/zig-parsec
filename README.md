@@ -8,6 +8,7 @@
   - custom context + parsers to track current indent?
 - `lookup()` - bridge between toking and parsing; looks up a parsed span against a keyword table
 - or `reparse(lower: Parser, upper: Parser)` - parse, span, reparse
+- `reparse` suggests also `rest` - which gets all the remaining input; would allow e.g. switching grammar at the top level.
 - parsing non-text binaries?
 
 ## Comptime Parsing

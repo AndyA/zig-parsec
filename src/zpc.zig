@@ -241,6 +241,7 @@ const TestTag = enum(u8) {
     DIGIT,
     ALPHA,
     MULTI,
+    IDENT,
     PLUS,
     MINUS,
     OPEN,
@@ -251,6 +252,7 @@ const TestTag = enum(u8) {
     MANY,
     ALNUM,
     ARRAY,
+    REST,
 };
 
 const TestContext = struct {
@@ -269,7 +271,7 @@ fn checkAndConsume(
 
 pub const Predicate = fn (char: u8) bool;
 
-pub fn predTrue() Predicate {
+pub fn predAny() Predicate {
     const shim = struct {
         fn pred(_: u8) bool {
             return true;
@@ -432,7 +434,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
         pub fn takeWhile(tag: Tag, bounds: Quantifier, pred: Predicate) Parser {
             assert(bounds.min <= bounds.max);
             const shim = struct {
-                fn someAreParser(_: Context, input: []const u8) ZpcError!Result {
+                fn takeWhileParser(_: Context, input: []const u8) ZpcError!Result {
                     const len = @min(input.len, bounds.max);
                     var pos: usize = 0;
                     while (pos < len and pred(input[pos]))
@@ -442,7 +444,11 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                     return .initOk(.initSlice(tag, input[0..pos]), input[pos..]);
                 }
             };
-            return shim.someAreParser;
+            return shim.takeWhileParser;
+        }
+
+        pub fn rest(tag: Tag) Parser {
+            return takeWhile(tag, .zeroOrMore, predAny());
         }
 
         test takeWhile {
@@ -974,6 +980,43 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                 ctx,
                 .initOk(.initSlice(.FOO, "Foo"), "."),
                 try parseFlatLower(ctx, "Foo."),
+            );
+        }
+
+        pub fn reparse(lowerParser: Parser, upperParser: Parser) Parser {
+            const shim = struct {
+                fn reparseParser(ctx: Context, input: []const u8) ZpcError!Result {
+                    const lower_res = try span(Token.NOP, lowerParser)(ctx, input);
+                    defer lower_res.deinit(ctx.allocator);
+                    if (!lower_res.matched())
+                        return lower_res;
+                    var upper_res = try left(upperParser, eof())(ctx, lower_res.tok.ok.value.slice);
+                    // if (upper_res.matched())
+                    upper_res.rest = lower_res.rest;
+                    return upper_res;
+                }
+            };
+            return shim.reparseParser;
+        }
+
+        test reparse {
+            const parseIdent = takeWhile(.IDENT, .oneOrMore, std.ascii.isAlphabetic);
+            const parseKeyword = reparse(parseIdent, alt(&.{
+                keyword(.FOO, "Foo"),
+                keyword(.BAR, "Bar"),
+            }));
+            const ctx: TestContext = .{ .allocator = std.testing.allocator };
+
+            try checkAndConsume(
+                ctx,
+                .initOk(.initSlice(.FOO, "Foo"), " Hello"),
+                try parseKeyword(ctx, "Foo Hello"),
+            );
+
+            try checkAndConsume(
+                ctx,
+                .initOk(.initSlice(.BAR, "Bar"), " Hello"),
+                try parseKeyword(ctx, "Bar Hello"),
             );
         }
 
