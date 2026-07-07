@@ -33,7 +33,7 @@ fn makeCsvParser() P.Parser {
 
     const bareParser = P.span(
         .BARE,
-        P.takeWhile(.NONE, .zeroOrMore, zpc.predNot(zpc.predSet(",\r\n"))),
+        P.takeWhile(.NONE, .zeroOrMore, zpc.predNot(zpc.predSet("\",\r\n"))),
     );
 
     const valueParser = P.right(skipSpace, P.alt(&.{ stringParser, bareParser }));
@@ -58,7 +58,10 @@ fn makeCsvParser() P.Parser {
 
     return P.left(
         csvParser,
-        P.takeWhile(.NONE, .zeroOrMore, std.ascii.isWhitespace),
+        P.left(
+            P.takeWhile(.NONE, .zeroOrMore, std.ascii.isWhitespace),
+            P.eof(),
+        ),
     );
 }
 
@@ -66,7 +69,7 @@ pub fn main(init: std.process.Init) !void {
     const jsonParser = makeCsvParser();
     const ctx: CsvContext = .{ .allocator = init.gpa };
     const res = try jsonParser(ctx,
-        \\"""Hello", "World""", Now
+        \\"""Hello", "World"""", Now
         \\1,2,3,4
     );
     defer res.deinit(init.gpa);
