@@ -827,8 +827,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                     tmp_ctx.allocator = arena.allocator();
                     const res = try parser(tmp_ctx, input);
                     if (!res.matched()) return .initFail(res.tok.fail, input);
-                    const consumed: usize = @intFromPtr(res.rest.ptr) -
-                        @intFromPtr(input.ptr);
+                    const consumed: usize = input.len - res.rest.len;
                     return .initOk(.initSlice(tag, input[0..consumed]), res.rest);
                 }
             };
@@ -991,8 +990,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                     errdefer lres.deinit(ctx.allocator);
                     if (!lres.matched())
                         return lres;
-                    const consumed: usize = @intFromPtr(lres.rest.ptr) -
-                        @intFromPtr(input.ptr);
+                    const consumed: usize = input.len - lres.rest.len;
                     var ures = try upper_complete_parser(ctx, input[0..consumed]);
                     if (ures.matched()) {
                         defer lres.deinit(ctx.allocator);
