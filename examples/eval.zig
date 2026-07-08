@@ -11,9 +11,9 @@ const zpc = @import("zpc");
 const Tag = enum(u8) {
     NONE,
     INT,
-    UNOPCHAIN,
+    UNOPS,
     UNOP,
-    BINOPCHAIN,
+    BINOPS,
     BINOP,
     NEG,
     FLIP,
@@ -41,7 +41,7 @@ const P = zpc.Zpc(Context, Tag);
 const skipSpace = P.takeWhile(.NONE, .zeroOrMore, std.ascii.isWhitespace);
 
 fn makeBinOpParser(valueParser: P.Parser, opParser: P.Parser) P.Parser {
-    return P.lower(P.seq(.BINOPCHAIN, &.{ valueParser, P.flat(
+    return P.lower(P.seq(.BINOPS, &.{ valueParser, P.flat(
         P.many(.NONE, .zeroOrMore, P.seq(.BINOP, &.{
             P.right(skipSpace, opParser), valueParser,
         })),
@@ -58,7 +58,7 @@ fn makeExpressionParser() P.Parser {
 
     const unaryParser = P.alt(&.{
         P.seq(.UNOP, &.{
-            P.many(.UNOPCHAIN, .oneOrMore, P.right(skipSpace, P.alt(&.{
+            P.many(.UNOPS, .oneOrMore, P.right(skipSpace, P.alt(&.{
                 P.keyword(.NEG, "-"),
                 P.keyword(.FLIP, "~"),
                 P.keyword(.NOT, "!"),
@@ -103,7 +103,7 @@ fn eval(token: P.Token) !i64 {
         .UNOP => {
             var res = try eval(token.other());
             const head = token.head();
-            assert(head.tag == .UNOPCHAIN);
+            assert(head.tag == .UNOPS);
             const kids = head.children();
             for (0..kids.len) |i|
                 res = switch (kids[kids.len - 1 - i].tag) {
@@ -114,7 +114,7 @@ fn eval(token: P.Token) !i64 {
                 };
             break :eval res;
         },
-        .BINOPCHAIN => {
+        .BINOPS => {
             var res = try eval(token.head());
             for (token.tail()) |op| {
                 assert(op.tag == .BINOP);
