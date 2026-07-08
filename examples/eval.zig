@@ -16,6 +16,7 @@ const Tag = enum(u8) {
     BINOPCHAIN,
     BINOP,
     NEG,
+    FLIP,
     NOT,
     MUL,
     DIV,
@@ -59,7 +60,8 @@ fn makeExpressionParser() P.Parser {
         P.seq(.UNOP, &.{
             P.many(.UNOPCHAIN, .oneOrMore, P.right(skipSpace, P.alt(&.{
                 P.keyword(.NEG, "-"),
-                P.keyword(.NOT, "~"),
+                P.keyword(.FLIP, "~"),
+                P.keyword(.NOT, "!"),
             }))),
             atomParser,
         }),
@@ -106,7 +108,8 @@ fn eval(token: P.Token) !i64 {
             for (0..kids.len) |i|
                 res = switch (kids[kids.len - 1 - i].tag) {
                     .NEG => -res,
-                    .NOT => ~res,
+                    .FLIP => ~res,
+                    .NOT => if (res != 0) 0 else 1,
                     else => unreachable,
                 };
             break :eval res;
@@ -145,7 +148,7 @@ pub fn main(init: std.process.Init) !void {
     const expressions: []const []const u8 = &.{
         "-1 + 3",
         "--(100 + 2 - 9) / 3 - ~10",
-        "3 < 3 + 2",
+        "!(3 < 3 + 2)",
     };
 
     for (expressions) |path| {
