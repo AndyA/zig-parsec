@@ -983,73 +983,24 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             );
         }
 
-        // TODO return lowerParse result (before span) if upperParse fails. Maybe this should
-        // be called `refine`?
-        pub fn reparse(tag: Tag, lowerParser: Parser, upperParser: Parser) Parser {
-            const shim = struct {
-                fn reparseParser(ctx: Context, input: []const u8) ZpcError!Result {
-                    const lower_res = try span(tag, lowerParser)(ctx, input);
-                    defer lower_res.deinit(ctx.allocator);
-                    if (!lower_res.matched())
-                        return lower_res;
-                    var upper_res = try left(upperParser, eof())(ctx, lower_res.tok.ok.value.slice);
-                    if (!upper_res.matched())
-                        return lower_res;
-                    upper_res.rest = lower_res.rest;
-                    return upper_res;
-                }
-            };
-            return shim.reparseParser;
-        }
-
-        test reparse {
-            const parseKeyword = reparse(
-                .IDENT,
-                takeWhile(Token.NOP, .oneOrMore, std.ascii.isAlphabetic),
-                alt(&.{
-                    keyword(.FOO, "Foo"),
-                    keyword(.BAR, "Bar"),
-                }),
-            );
-            const ctx: TestContext = .{ .allocator = std.testing.allocator };
-
-            try checkAndConsume(
-                ctx,
-                .initOk(.initSlice(.FOO, "Foo"), " Hello"),
-                try parseKeyword(ctx, "Foo Hello"),
-            );
-
-            try checkAndConsume(
-                ctx,
-                .initOk(.initSlice(.BAR, "Bar"), " Hello"),
-                try parseKeyword(ctx, "Bar Hello"),
-            );
-
-            try checkAndConsume(
-                ctx,
-                .initOk(.initSlice(.IDENT, "FooBar"), " Hello"),
-                try parseKeyword(ctx, "FooBar Hello"),
-            );
-        }
-
-        pub fn refine(lowerParser: Parser, upperParser: Parser) Parser {
-            const up = left(upperParser, eof());
+        pub fn refine(lower_parser: Parser, upper_parser: Parser) Parser {
+            const upper_complete_parser = left(upper_parser, eof());
             const shim = struct {
                 fn refineParser(ctx: Context, input: []const u8) ZpcError!Result {
-                    const lower_res = try lowerParser(ctx, input);
-                    errdefer lower_res.deinit(ctx.allocator);
-                    if (!lower_res.matched())
-                        return lower_res;
-                    const consumed: usize = @intFromPtr(lower_res.rest.ptr) -
+                    const lres = try lower_parser(ctx, input);
+                    errdefer lres.deinit(ctx.allocator);
+                    if (!lres.matched())
+                        return lres;
+                    const consumed: usize = @intFromPtr(lres.rest.ptr) -
                         @intFromPtr(input.ptr);
-                    var upper_res = try up(ctx, input[0..consumed]);
-                    if (upper_res.matched()) {
-                        defer lower_res.deinit(ctx.allocator);
-                        upper_res.rest = lower_res.rest;
-                        return upper_res;
+                    var ures = try upper_complete_parser(ctx, input[0..consumed]);
+                    if (ures.matched()) {
+                        defer lres.deinit(ctx.allocator);
+                        ures.rest = lres.rest;
+                        return ures;
                     } else {
-                        defer upper_res.deinit(ctx.allocator);
-                        return lower_res;
+                        defer ures.deinit(ctx.allocator);
+                        return lres;
                     }
                 }
             };
