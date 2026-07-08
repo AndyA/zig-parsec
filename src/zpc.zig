@@ -1032,6 +1032,59 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             );
         }
 
+        pub fn refine(lowerParser: Parser, upperParser: Parser) Parser {
+            const up = left(upperParser, eof());
+            const shim = struct {
+                fn refineParser(ctx: Context, input: []const u8) ZpcError!Result {
+                    const lower_res = try lowerParser(ctx, input);
+                    errdefer lower_res.deinit(ctx.allocator);
+                    if (!lower_res.matched())
+                        return lower_res;
+                    const consumed: usize = @intFromPtr(lower_res.rest.ptr) -
+                        @intFromPtr(input.ptr);
+                    var upper_res = try up(ctx, input[0..consumed]);
+                    if (upper_res.matched()) {
+                        defer lower_res.deinit(ctx.allocator);
+                        upper_res.rest = lower_res.rest;
+                        return upper_res;
+                    } else {
+                        defer upper_res.deinit(ctx.allocator);
+                        return lower_res;
+                    }
+                }
+            };
+            return shim.refineParser;
+        }
+
+        test refine {
+            const parseKeyword = refine(
+                takeWhile(.IDENT, .oneOrMore, std.ascii.isAlphabetic),
+                alt(&.{
+                    keyword(.FOO, "Foo"),
+                    keyword(.BAR, "Bar"),
+                }),
+            );
+            const ctx: TestContext = .{ .allocator = std.testing.allocator };
+
+            try checkAndConsume(
+                ctx,
+                .initOk(.initSlice(.FOO, "Foo"), " Hello"),
+                try parseKeyword(ctx, "Foo Hello"),
+            );
+
+            try checkAndConsume(
+                ctx,
+                .initOk(.initSlice(.BAR, "Bar"), " Hello"),
+                try parseKeyword(ctx, "Bar Hello"),
+            );
+
+            try checkAndConsume(
+                ctx,
+                .initOk(.initSlice(.IDENT, "FooBar"), " Hello"),
+                try parseKeyword(ctx, "FooBar Hello"),
+            );
+        }
+
         // Call a parser that is pointed to by a field on the context.
         pub fn recurse(field_name: []const u8) Parser {
             const shim = struct {
