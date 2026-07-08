@@ -983,6 +983,8 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             );
         }
 
+        // TODO return lowerParse result if upperParse fails. Maybe this should
+        // be called `refine`?
         pub fn reparse(tag: Tag, lowerParser: Parser, upperParser: Parser) Parser {
             const shim = struct {
                 fn reparseParser(ctx: Context, input: []const u8) ZpcError!Result {
