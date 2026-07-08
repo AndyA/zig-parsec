@@ -157,6 +157,6 @@ pub fn main(init: std.process.Init) !void {
         defer res.deinit(init.gpa);
         print("{f}\n", .{res});
         if (res.matched())
-            print("result: {d}\n", .{try eval(res.tok.ok)});
+            print("result: {d}\n\n", .{try eval(res.tok.ok)});
     }
 }
