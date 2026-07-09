@@ -9,7 +9,7 @@ const Allocator = std.mem.Allocator;
 const zpc = @import("zpc");
 
 const Tag = enum(u8) {
-    NONE,
+    N, // means don't care - but `N` is shorter
     INT,
     UNOPS,
     UNOP,
@@ -38,11 +38,11 @@ const Context = struct {
 
 const P = zpc.Zpc(Context, Tag);
 
-const skipSpace = P.takeWhile(.NONE, .zeroOrMore, std.ascii.isWhitespace);
+const skipSpace = P.takeWhile(.N, .zeroOrMore, std.ascii.isWhitespace);
 
 fn makeBinOpParser(valueParser: P.Parser, opParser: P.Parser) P.Parser {
     return P.lower(P.seq(.BINOPS, &.{ valueParser, P.flat(
-        P.many(.NONE, .zeroOrMore, P.seq(.BINOP, &.{
+        P.many(.N, .zeroOrMore, P.seq(.BINOP, &.{
             P.right(skipSpace, opParser), valueParser,
         })),
     ) }));
