@@ -988,18 +988,20 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                 fn refineParser(ctx: Context, input: []const u8) ZpcError!Result {
                     const lres = try lower_parser(ctx, input);
                     errdefer lres.deinit(ctx.allocator);
+
                     if (!lres.matched())
                         return lres;
+
                     const consumed: usize = input.len - lres.rest.len;
                     var ures = try upper_complete_parser(ctx, input[0..consumed]);
+
                     if (ures.matched()) {
                         defer lres.deinit(ctx.allocator);
                         ures.rest = lres.rest;
                         return ures;
-                    } else {
-                        defer ures.deinit(ctx.allocator);
-                        return lres;
                     }
+
+                    return lres;
                 }
             };
             return shim.refineParser;
