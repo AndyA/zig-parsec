@@ -995,13 +995,12 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                     const consumed: usize = input.len - lres.rest.len;
                     var ures = try upper_complete_parser(ctx, input[0..consumed]);
 
-                    if (ures.matched()) {
-                        defer lres.deinit(ctx.allocator);
-                        ures.rest = lres.rest;
-                        return ures;
-                    }
+                    if (!ures.matched())
+                        return lres;
 
-                    return lres;
+                    defer lres.deinit(ctx.allocator);
+                    ures.rest = lres.rest;
+                    return ures;
                 }
             };
             return shim.refineParser;
