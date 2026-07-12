@@ -40,6 +40,10 @@ pub fn KnownRange(T: type) type {
             return self.min == self.max;
         }
 
+        pub fn eql(self: Self, other: Self) bool {
+            return self.min == other.min and self.max == other.max;
+        }
+
         pub fn combine(self: Self, other: Self) Self {
             assert(self.min <= self.max);
             assert(other.min <= other.max);
@@ -54,10 +58,8 @@ pub fn KnownRange(T: type) type {
             if (uself.isExact())
                 return .initExact(uself.min);
             const common = @clz(uself.min ^ uself.max);
-            print("common={d}\n", .{common});
             assert(common < Bits);
-            const mask: U = ~@as(U, std.math.maxInt(U)) >> @as(Shift, @intCast(common));
-            print("mask={x}\n", .{mask});
+            const mask: U = ~(@as(U, std.math.maxInt(U)) >> @as(Shift, @intCast(common)));
             return .init(uself.min & mask, ~uself.min & mask);
         }
 
@@ -128,6 +130,10 @@ pub fn KnownBits(T: type) type {
             return self.set == ~self.clear;
         }
 
+        pub fn eql(self: Self, other: Self) bool {
+            return self.set == other.set and self.clear == other.clear;
+        }
+
         pub fn combine(self: Self, other: Self) Self {
             assert(self.set & self.clear == 0);
             assert(other.set & other.clear == 0);
@@ -155,6 +161,8 @@ pub fn KnownBits(T: type) type {
 
             const lo_known = @ctz(unknown);
             assert(lo_known != Bits);
+            if (lo_known == 0)
+                return hi_range;
             const lo_mask = (@as(U, 1) << @as(Shift, @intCast(lo_known - 1)));
             const lo_bits = self.set & lo_mask;
 
@@ -220,6 +228,12 @@ pub fn KnownDomain(T: type) type {
             };
         }
 
+        pub fn eql(self: Self, other: Self) bool {
+            return self.unsigned_range.eql(other.unsigned_range) and
+                self.signed_range.eql(other.signed_range) and
+                self.bits.eql(other.bits);
+        }
+
         pub fn format(self: Self, writer: *Io.Writer) Io.Writer.Error!void {
             try writer.print(
                 "ur: {f} sr: {f} bits: {f}",
@@ -237,10 +251,17 @@ pub fn KnownDomain(T: type) type {
 
         pub fn refine(self: Self) Self {
             var res = self;
-            print("res={f}, bits={f}\n", .{ res, res.unsigned_range.toBits() });
-            // res.bits = res.bits.combine(res.signed_range.toBits());
-            res.bits = res.bits.combine(res.unsigned_range.toBits());
-            return res;
+            while (true) {
+                const prev = res;
+                res.bits = res.bits.combine(res.signed_range.toBits());
+                res.bits = res.bits.combine(res.unsigned_range.toBits());
+                res.signed_range = res.signed_range.combine(res.bits.toSignedRange());
+                // res.signed_range = res.signed_range.combine(res.unsigned_range);
+                res.unsigned_range = res.unsigned_range.combine(res.bits.toUnsignedRange());
+                // res.unsigned_range = res.unsigned_range.combine(res.signed_range);
+                if (prev.eql(res))
+                    return res;
+            }
         }
     };
 }
