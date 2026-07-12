@@ -9,62 +9,143 @@ const Allocator = std.mem.Allocator;
 const zpc = @import("zpc");
 
 pub fn KnownRange(T: type) type {
+    const Bits = @typeInfo(T).int.bits;
+    const Shift = @Int(.unsigned, std.math.log2_int(u16, Bits));
+
+    const U = @Int(.unsigned, Bits);
+    const S = @Int(.signed, Bits);
+
     return struct {
         const Self = @This();
-        pub const empty = .{ std.math.minInt(T), std.math.maxInt(T) };
+        pub const empty: Self = .{ .min = std.math.minInt(T), .max = std.math.maxInt(T) };
 
         min: T,
         max: T,
 
         pub fn init(min: T, max: T) Self {
-            .{ .min = min, .max = max };
+            assert(min <= max);
+            return .{ .min = min, .max = max };
         }
 
         pub fn initExact(value: T) Self {
             return .init(value, value);
         }
 
+        pub fn format(self: Self, writer: *Io.Writer) Io.Writer.Error!void {
+            try writer.print("[{d}, {d})", .{ self.min, self.max });
+        }
+
+        pub fn isExact(self: Self) bool {
+            assert(self.min <= self.max);
+            return self.min == self.max;
+        }
+
         pub fn combine(self: Self, other: Self) Self {
-            const min = @max(self.unsigned_range.@"0", other.unsigned_range.@"0");
-            const max = @min(self.unsigned_range.@"0", other.unsigned_range.@"0");
+            assert(self.min <= self.max);
+            assert(other.min <= other.max);
+            const min = @max(self.min, other.min);
+            const max = @min(self.max, other.max);
             assert(min <= max);
             return .init(min, max);
+        }
+
+        pub fn toBits(self: Self) KnownBits(U) {
+            const uself = self.toUnsignedRange();
+            if (uself.isExact())
+                return .initExact(uself.min);
+            const common = @clz(uself.min ^ uself.max);
+            print("common={d}\n", .{common});
+            assert(common < Bits);
+            const mask: U = ~@as(U, std.math.maxInt(U)) >> @as(Shift, @intCast(common));
+            print("mask={x}\n", .{mask});
+            return .init(uself.min & mask, ~uself.min & mask);
+        }
+
+        pub fn toUnsignedRange(self: Self) KnownRange(U) {
+            assert(self.min <= self.max);
+            return blk: switch (@typeInfo(T).int.signedness) {
+                .unsigned => self,
+                .signed => {
+                    const a: U = @bitCast(self.min);
+                    const b: U = @bitCast(self.max);
+                    break :blk .init(@min(a, b), @max(a, b));
+                },
+            };
+        }
+
+        pub fn toSignedRange(self: Self) KnownRange(S) {
+            assert(self.min <= self.max);
+            return blk: switch (@typeInfo(T).int.signedness) {
+                .unsigned => {
+                    const a: S = @bitCast(self.min);
+                    const b: S = @bitCast(self.max);
+                    break :blk .init(@min(a, b), @max(a, b));
+                },
+                .signed => self,
+            };
         }
     };
 }
 
+test KnownRange {
+    const KR = KnownRange(u32);
+    try expectEqualDeep(KR.init(4, 5), KR.init(3, 5).combine(KR.init(4, 8)));
+}
+
 pub fn KnownBits(T: type) type {
-    const U = @Int(.unsigned, @typeInfo(T).int.bits);
-    // const S = @Int(.signed, @typeInfo(T).int.bits);
+    const Bits = @typeInfo(T).int.bits;
+    const Shift = @Int(.unsigned, std.math.log2_int(u16, Bits));
+    const U = @Int(.unsigned, Bits);
+    const S = @Int(.signed, Bits);
 
     return struct {
         const Self = @This();
-        pub const empty = .{ .set = 0, .clear = 0 };
+        pub const empty: Self = .{ .set = 0, .clear = 0 };
 
         set: U,
         clear: U,
 
         pub fn init(set: U, clear: U) Self {
-            .{ .set = set, .clear = clear };
+            return .{ .set = set, .clear = clear };
         }
 
         pub fn initExact(value: U) Self {
             return .init(value, ~value);
         }
+        pub fn format(self: Self, writer: *Io.Writer) Io.Writer.Error!void {
+            var buf: [Bits]u8 = undefined;
+            for (0..Bits) |bit| {
+                const mask: U = @as(U, 1) << @as(Shift, @intCast(Bits - bit - 1));
+                const set = (self.set & mask) != 0;
+                const clear = (self.clear & mask) != 0;
+                buf[bit] = if (set) '1' else if (clear) '0' else 'x';
+            }
+            _ = try writer.write(&buf);
+        }
+
+        pub fn isExact(self: Self) bool {
+            assert(self.set & self.clear == 0);
+            return self.set == ~self.clear;
+        }
 
         pub fn combine(self: Self, other: Self) Self {
+            assert(self.set & self.clear == 0);
+            assert(other.set & other.clear == 0);
             const set = self.set | other.set;
             const clear = self.clear | other.clear;
             assert(set & clear == 0);
             return .init(set, clear);
         }
 
-        pub fn unsignedRange(self: Self) KnownRange(U) {
+        pub fn toUnsignedRange(self: Self) KnownRange(U) {
             assert(self.set & self.clear == 0);
-            const unknown = ~(self.set | self.clear);
+            const unknown: U = ~(self.set | self.clear);
 
             const hi_known = @clz(unknown);
-            const hi_mask = std.math.maxInt(U) >> hi_known;
+            if (hi_known == Bits)
+                return .initExact(self.set);
+
+            const hi_mask: U = @as(U, std.math.maxInt(U)) >> @as(Shift, @intCast(hi_known));
             const hi_bits = self.set & ~hi_mask;
 
             const hi_range: KnownRange(U) = .init(
@@ -73,7 +154,8 @@ pub fn KnownBits(T: type) type {
             );
 
             const lo_known = @ctz(unknown);
-            const lo_mask = (@as(U, 1) << lo_known) - 1;
+            assert(lo_known != Bits);
+            const lo_mask = (@as(U, 1) << @as(Shift, @intCast(lo_known - 1)));
             const lo_bits = self.set & lo_mask;
 
             const lo_range: KnownRange(U) = .init(
@@ -83,26 +165,39 @@ pub fn KnownBits(T: type) type {
 
             return lo_range.combine(hi_range);
         }
+
+        pub fn toSignedRange(self: Self) KnownRange(S) {
+            return self.toUnsignedRange().toSignedRange();
+        }
     };
+}
+
+test KnownBits {
+    try expectEqualDeep(
+        KnownRange(u32).initExact(123),
+        KnownBits(u32).initExact(123).toUnsignedRange(),
+    );
 }
 
 pub fn KnownDomain(T: type) type {
     const U = @Int(.unsigned, @typeInfo(T).int.bits);
     const S = @Int(.signed, @typeInfo(T).int.bits);
+    const KRU = KnownRange(U);
+    const KRS = KnownRange(S);
 
     return struct {
         const Self = @This();
         pub const empty = .{};
 
-        unsigned_range: KnownRange(U) = .empty,
-        signed_range: KnownRange(S) = .empty,
+        unsigned_range: KRU = .empty,
+        signed_range: KRS = .empty,
         bits: KnownBits(U) = .empty,
 
-        pub fn initUnsignedRange(range: KnownRange(U)) Self {
+        pub fn initUnsignedRange(range: KRU) Self {
             return .{ .unsigned_range = range };
         }
 
-        pub fn initSignedRange(range: KnownRange(S)) Self {
+        pub fn initSignedRange(range: KRS) Self {
             return .{ .signed_range = range };
         }
 
@@ -111,11 +206,25 @@ pub fn KnownDomain(T: type) type {
         }
 
         pub fn initExact(value: T) Self {
-            return .{
-                .unsigned_range = if (T == U) .initUnsignedExact(value) else .empty,
-                .signed_range = if (T == S) .initSignedExact(value) else .empty,
-                .bits = .initExact(@as(U, @bitCast(value))),
+            return switch (T) {
+                U => .{
+                    .unsigned_range = KRU.initExact(value),
+                    .signed_range = KRU.initExact(value).toSignedRange(),
+                    .bits = .initExact(@as(U, @bitCast(value))),
+                },
+                S => .{
+                    .unsigned_range = KRS.initExact(value).toUnsignedRange(),
+                    .signed_range = KRS.initExact(value),
+                    .bits = .initExact(@as(U, @bitCast(value))),
+                },
             };
+        }
+
+        pub fn format(self: Self, writer: *Io.Writer) Io.Writer.Error!void {
+            try writer.print(
+                "ur: {f} sr: {f} bits: {f}",
+                .{ self.unsigned_range, self.signed_range, self.bits },
+            );
         }
 
         pub fn combine(self: Self, other: Self) Self {
@@ -125,7 +234,21 @@ pub fn KnownDomain(T: type) type {
                 .bits = self.bits.combine(other.bits),
             };
         }
+
+        pub fn refine(self: Self) Self {
+            var res = self;
+            print("res={f}, bits={f}\n", .{ res, res.unsigned_range.toBits() });
+            // res.bits = res.bits.combine(res.signed_range.toBits());
+            res.bits = res.bits.combine(res.unsigned_range.toBits());
+            return res;
+        }
     };
+}
+
+test KnownDomain {
+    const KD = KnownDomain(u32);
+    const kd1: KD = .initUnsignedRange(.init(64, 127));
+    print("kd1: {f}\n", .{kd1.refine()});
 }
 
 const Tag = enum(u8) {
