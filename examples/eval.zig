@@ -8,6 +8,125 @@ const Allocator = std.mem.Allocator;
 
 const zpc = @import("zpc");
 
+pub fn KnownRange(T: type) type {
+    return struct {
+        const Self = @This();
+        pub const empty = .{ std.math.minInt(T), std.math.maxInt(T) };
+
+        min: T,
+        max: T,
+
+        pub fn init(min: T, max: T) Self {
+            .{ .min = min, .max = max };
+        }
+
+        pub fn initExact(value: T) Self {
+            return .init(value, value);
+        }
+
+        pub fn combine(self: Self, other: Self) Self {
+            const min = @max(self.unsigned_range.@"0", other.unsigned_range.@"0");
+            const max = @min(self.unsigned_range.@"0", other.unsigned_range.@"0");
+            assert(min <= max);
+            return .init(min, max);
+        }
+    };
+}
+
+pub fn KnownBits(T: type) type {
+    const U = @Int(.unsigned, @typeInfo(T).int.bits);
+    // const S = @Int(.signed, @typeInfo(T).int.bits);
+
+    return struct {
+        const Self = @This();
+        pub const empty = .{ .set = 0, .clear = 0 };
+
+        set: U,
+        clear: U,
+
+        pub fn init(set: U, clear: U) Self {
+            .{ .set = set, .clear = clear };
+        }
+
+        pub fn initExact(value: U) Self {
+            return .init(value, ~value);
+        }
+
+        pub fn combine(self: Self, other: Self) Self {
+            const set = self.set | other.set;
+            const clear = self.clear | other.clear;
+            assert(set & clear == 0);
+            return .init(set, clear);
+        }
+
+        pub fn unsignedRange(self: Self) KnownRange(U) {
+            assert(self.set & self.clear == 0);
+            const unknown = ~(self.set | self.clear);
+            const hi_known = @clz(unknown);
+            const hi_mask = std.math.maxInt(U) >> hi_known;
+            const hi_bits = self.set & ~hi_mask;
+
+            const hi_range: KnownRange(U) = .init(
+                hi_bits,
+                hi_bits | hi_mask,
+            );
+
+            const lo_known = @ctz(unknown);
+            const lo_mask = (@as(U, 1) << lo_known) - 1;
+            const lo_bits = self.set & lo_mask;
+
+            const lo_range: KnownRange(U) = .init(
+                lo_bits,
+                std.math.maxInt(U) & ~lo_mask | lo_bits,
+            );
+
+            return lo_range.combine(hi_range);
+        }
+    };
+}
+
+pub fn KnownDomain(T: type) type {
+    const U = @Int(.unsigned, @typeInfo(T).int.bits);
+    const S = @Int(.signed, @typeInfo(T).int.bits);
+
+    return struct {
+        const Self = @This();
+        pub const empty = .{};
+
+        unsigned_range: KnownRange(U) = .empty,
+        signed_range: KnownRange(S) = .empty,
+        bits: KnownBits(U) = .empty,
+
+        pub fn initUnsignedRange(range: KnownRange(U)) Self {
+            return .{ .unsigned_range = range };
+        }
+
+        pub fn initSignedRange(range: KnownRange(S)) Self {
+            return .{ .signed_range = range };
+        }
+
+        pub fn initBits(bits: KnownBits(U)) Self {
+            return .{ .bits = bits };
+        }
+
+        pub fn initExact(value: T) Self {
+            return .{
+                .unsigned_range = if (T == U) .initUnsignedExact(value) else .empty,
+                .signed_range = if (T == S) .initSignedExact(value) else .empty,
+                .bits = .initExact(@as(U, @bitCast(value))),
+            };
+        }
+
+        pub fn combine(self: Self, other: Self) Self {
+            return .{
+                .unsigned_range = self.unsigned_range.combine(other.unsigned_range),
+                .signed_range = self.signed_range.combine(other.signed_range),
+                .bits = self.bits.combine(other.bits),
+            };
+        }
+    };
+}
+
 const Tag = enum(u8) {
     N, // means don't care - but `N` is shorter
     INT,
