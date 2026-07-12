@@ -62,6 +62,7 @@ pub fn KnownBits(T: type) type {
         pub fn unsignedRange(self: Self) KnownRange(U) {
             assert(self.set & self.clear == 0);
             const unknown = ~(self.set | self.clear);
+
             const hi_known = @clz(unknown);
             const hi_mask = std.math.maxInt(U) >> hi_known;
             const hi_bits = self.set & ~hi_mask;
