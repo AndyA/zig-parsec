@@ -447,10 +447,6 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             return shim.takeWhileParser;
         }
 
-        pub fn rest(tag: Tag) Parser {
-            return takeWhile(tag, .zeroOrMore, predAny());
-        }
-
         test takeWhile {
             const parseDigits = takeWhile(
                 .DIGIT,
@@ -481,6 +477,32 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                 ctx,
                 .initFailHere("X"),
                 try parseDigits(ctx, "X"),
+            );
+        }
+
+        pub fn rest(tag: Tag) Parser {
+            const shim = struct {
+                fn restParser(_: Context, input: []const u8) ZpcError!Result {
+                    return .initOk(.initSlice(tag, input), "");
+                }
+            };
+            return shim.restParser;
+        }
+
+        test rest {
+            const parseAllDigits = seq(.MULTI, &.{
+                takeWhile(.DIGIT, .oneOrMore, std.ascii.isDigit),
+                rest(.REST),
+            });
+            const ctx: TestContext = .{ .allocator = std.testing.allocator };
+            try checkAndConsume(
+                ctx,
+                .initOk(.initList(.MULTI, &.{
+                    .initSlice(.DIGIT, "123"),
+                    .initSlice(.REST, "ABC."),
+                }), ""),
+
+                try parseAllDigits(ctx, "123ABC."),
             );
         }
 
