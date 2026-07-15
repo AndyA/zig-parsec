@@ -335,10 +335,11 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
         pub const Mapper = fn (ctx: Context, result: Result) ZpcError!Result;
 
         pub const Quantifier = struct {
-            pub const zeroOrMore: @This() = .{};
-            pub const zeroOrOne: @This() = .{ .max = 1 };
-            pub const oneOrMore: @This() = .{ .min = 1 };
-            pub const one: @This() = .{ .min = 1, .max = 1 };
+            const Self = @This();
+            pub const zeroOrMore: Self = .{};
+            pub const zeroOrOne: Self = .{ .max = 1 };
+            pub const oneOrMore: Self = .{ .min = 1 };
+            pub const one: Self = .{ .min = 1, .max = 1 };
 
             min: usize = 0,
             max: usize = std.math.maxInt(usize),
