@@ -481,10 +481,10 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             );
         }
 
-        pub fn rest(tag: Tag) Parser {
+        pub fn rest() Parser {
             const shim = struct {
                 fn restParser(_: Context, input: []const u8) ZpcError!Result {
-                    return .initOk(.initSlice(tag, input), "");
+                    return .initOk(.initSlice(Token.NOP, input), "");
                 }
             };
             return shim.restParser;
@@ -493,14 +493,14 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
         test rest {
             const parseAllDigits = seq(.MULTI, &.{
                 takeWhile(.DIGIT, .oneOrMore, std.ascii.isDigit),
-                rest(.REST),
+                rest(),
             });
             const ctx: TestContext = .{ .allocator = std.testing.allocator };
             try checkAndConsume(
                 ctx,
                 .initOk(.initList(.MULTI, &.{
                     .initSlice(.DIGIT, "123"),
-                    .initSlice(.REST, "ABC."),
+                    .initSlice(Token.NOP, "ABC."),
                 }), ""),
 
                 try parseAllDigits(ctx, "123ABC."),
