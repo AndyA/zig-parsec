@@ -339,7 +339,11 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             pub const zeroOrMore: Self = .{};
             pub const zeroOrOne: Self = .{ .max = 1 };
             pub const oneOrMore: Self = .{ .min = 1 };
-            pub const one: Self = .{ .min = 1, .max = 1 };
+            pub const one: Self = exactly(1);
+
+            pub fn exactly(n: usize) Self {
+                return .{ .min = n, .max = n };
+            }
 
             min: usize = 0,
             max: usize = std.math.maxInt(usize),
@@ -432,6 +436,32 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             );
         }
 
+        pub fn rest() Parser {
+            const shim = struct {
+                fn restParser(_: Context, input: []const u8) ZpcError!Result {
+                    return .initOk(.initSlice(Token.NOP, input), "");
+                }
+            };
+            return shim.restParser;
+        }
+
+        test rest {
+            const parseAllDigits = seq(.MULTI, &.{
+                takeWhile(.DIGIT, .oneOrMore, std.ascii.isDigit),
+                rest(),
+            });
+            const ctx: TestContext = .{ .allocator = std.testing.allocator };
+            try checkAndConsume(
+                ctx,
+                .initOk(.initList(.MULTI, &.{
+                    .initSlice(.DIGIT, "123"),
+                    .initSlice(Token.NOP, "ABC."),
+                }), ""),
+
+                try parseAllDigits(ctx, "123ABC."),
+            );
+        }
+
         pub fn takeWhile(tag: Tag, bounds: Quantifier, pred: Predicate) Parser {
             assert(bounds.min <= bounds.max);
             const shim = struct {
@@ -478,32 +508,6 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
                 ctx,
                 .initFailHere("X"),
                 try parseDigits(ctx, "X"),
-            );
-        }
-
-        pub fn rest() Parser {
-            const shim = struct {
-                fn restParser(_: Context, input: []const u8) ZpcError!Result {
-                    return .initOk(.initSlice(Token.NOP, input), "");
-                }
-            };
-            return shim.restParser;
-        }
-
-        test rest {
-            const parseAllDigits = seq(.MULTI, &.{
-                takeWhile(.DIGIT, .oneOrMore, std.ascii.isDigit),
-                rest(),
-            });
-            const ctx: TestContext = .{ .allocator = std.testing.allocator };
-            try checkAndConsume(
-                ctx,
-                .initOk(.initList(.MULTI, &.{
-                    .initSlice(.DIGIT, "123"),
-                    .initSlice(Token.NOP, "ABC."),
-                }), ""),
-
-                try parseAllDigits(ctx, "123ABC."),
             );
         }
 
