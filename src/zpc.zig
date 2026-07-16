@@ -350,6 +350,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
         };
 
         pub fn keyword(tag: Tag, str: []const u8) Parser {
+            assert(str.len != 0);
             const shim = struct {
                 fn keywordParser(_: Context, input: []const u8) ZpcError!Result {
                     if (input.len >= str.len and std.mem.eql(u8, input[0..str.len], str))
