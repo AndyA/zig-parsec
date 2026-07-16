@@ -931,7 +931,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             const shim = struct {
                 fn advancesParser(ctx: Context, input: []const u8) ZpcError!Result {
                     const res = try parser(ctx, input);
-                    if (res.matched() and input.ptr == res.rest.ptr) {
+                    if (res.matched() and input.len == res.rest.len) {
                         res.deinit(ctx.allocator);
                         return .initFailHere(input);
                     }
