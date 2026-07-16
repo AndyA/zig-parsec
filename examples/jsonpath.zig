@@ -12,7 +12,7 @@ const JsonPathTag = enum(u8) {
     NONE,
     PATH,
     SEGMENT,
-    DOT,
+    SUBSCRIPT,
     SEARCH,
     IDENT,
     NUMBER,
@@ -67,11 +67,11 @@ fn makeJsonPathParser() P.Parser {
         // ..foo    SEGMENT(SEARCH, IDENT)
         // ..[sub]  SEGMENT(SEARCH, NUMBER | STRING | WILD)
         P.seq(.SEGMENT, &.{ P.keyword(.SEARCH, ".."), refParser }),
-        // .foo     SEGMENT(DOT, IDENT)
-        // .[sub]   SEGMENT(DOT, NUMBER | STRING | WILD)
-        P.seq(.SEGMENT, &.{ P.keyword(.DOT, "."), refParser }),
-        // [sub]    SEGMENT(DOT, NUMBER | STRING | WILD)
-        P.seq(.SEGMENT, &.{ P.always(.DOT, "."), subscriptParser }),
+        // .foo     SEGMENT(SUBSCRIPT, IDENT)
+        // .[sub]   SEGMENT(SUBSCRIPT, NUMBER | STRING | WILD)
+        P.seq(.SEGMENT, &.{ P.keyword(.SUBSCRIPT, "."), refParser }),
+        // [sub]    SEGMENT(SUBSCRIPT, NUMBER | STRING | WILD)
+        P.seq(.SEGMENT, &.{ P.always(.SUBSCRIPT, "."), subscriptParser }),
     });
 
     return P.between(
@@ -86,7 +86,7 @@ pub fn main(init: std.process.Init) !void {
     const ctx: JsonContext = .{ .allocator = init.gpa };
 
     const paths: []const []const u8 = &.{
-        \\$[0].$foo["\n"].[*]..$.*
+        \\$[0].$foo["\""].[*]..$.*
         ,
         \\$
         ,
