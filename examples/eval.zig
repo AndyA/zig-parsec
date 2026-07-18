@@ -44,7 +44,7 @@ pub fn KnownRange(T: type) type {
         }
 
         pub fn format(self: Self, writer: *Io.Writer) Io.Writer.Error!void {
-            try writer.print("[{d}, {d})", .{ self.min, self.max });
+            try writer.print("{d}..{d}", .{ self.min, self.max });
         }
 
         pub fn isExact(self: Self) bool {
@@ -271,9 +271,12 @@ pub fn KnownDomain(T: type) type {
 }
 
 test KnownDomain {
-    const KD = KnownDomain(u16);
-    const kd1: KD = .initRange(.init(64, 127));
-    print("kd1: {f}\n", .{kd1.refine()});
+    const KDU = KnownDomain(u16);
+    const kdu1: KDU = .initRange(.init(64, 127));
+    print("kdu1: {f}\n", .{kdu1.refine()});
+    const KDS = KnownDomain(i16);
+    const kds1: KDS = .initRange(.init(-300, -1));
+    print("kds1: {f}\n", .{kds1.refine()});
 }
 
 const Tag = enum(u8) {
