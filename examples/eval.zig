@@ -200,7 +200,7 @@ pub fn KnownDomain(T: type) type {
         const Self = @This();
         const Range = KnownRange(T);
         const Bits = KnownBits(T);
-        pub const empty = .{};
+        pub const empty: Self = .{};
 
         range: Range = .empty,
         bits: Bits = .empty,
