@@ -354,6 +354,12 @@ test KnownDomain {
 
     const kds6: KDS = .initBits(.initSigned(0x2a, 0x55, 8));
     print("kds6: {f} {f}\n", .{ kds6, kds6.refine() });
+
+    const kds7: KDS = .initExact(0x55aa);
+    print("kds7: {f} {f}\n", .{ kds7, kds7.refine() });
+
+    const kds8: KDS = .initRange(.initExact(0x55aa));
+    print("kds8: {f} {f}\n", .{ kds8, kds8.refine() });
 }
 
 const Tag = enum(u8) {
@@ -496,7 +502,7 @@ pub fn main(init: std.process.Init) !void {
     const expressions: []const []const u8 = &.{
         "-1 + 3",
         "--(100 + 2 - 9) / 3 - ~10",
-        "!(3 < 3 + 2)",
+        "(3 < 4) + 7",
     };
 
     for (expressions) |path| {

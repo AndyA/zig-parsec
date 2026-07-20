@@ -341,8 +341,13 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
             pub const oneOrMore: Self = .{ .min = 1 };
             pub const one: Self = exactly(1);
 
+            pub fn range(min: usize, max: usize) Self {
+                assert(min <= max);
+                return .{ .min = min, .max = max };
+            }
+
             pub fn exactly(n: usize) Self {
-                return .{ .min = n, .max = n };
+                return range(n, n);
             }
 
             min: usize = 0,
@@ -482,7 +487,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
         test takeWhile {
             const parseDigits = takeWhile(
                 .DIGIT,
-                .{ .min = 1, .max = 2 },
+                .range(1, 2),
                 std.ascii.isDigit,
             );
             const ctx: TestContext = .{ .allocator = std.testing.allocator };
@@ -748,7 +753,7 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
         test many {
             const parseFooBar = many(
                 .MULTI,
-                .{ .min = 2, .max = 3 },
+                .range(2, 3),
                 alt(&.{ keyword(.FOO, "Foo"), keyword(.BAR, "Bar") }),
             );
             const ctx: TestContext = .{ .allocator = std.testing.allocator };
