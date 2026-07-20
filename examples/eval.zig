@@ -171,9 +171,9 @@ pub fn KnownBits(T: type) type {
         pub fn eql(self: Self, other: Self) bool {
             self.assertValid();
             other.assertValid();
-            return self.sign == other.sign and
-                self.set == other.set and
-                self.clear == other.clear;
+            return self.set == other.set and
+                self.clear == other.clear and
+                self.sign == other.sign;
         }
 
         pub fn narrow(self: Self, other: Self) Self {
