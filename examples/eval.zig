@@ -14,6 +14,7 @@ fn IntRep(T: type) type {
         pub const U = @Int(.unsigned, Bits);
         pub const Shift = @Int(.unsigned, std.math.log2_int(u16, Bits));
         pub const BitCount = @Int(.unsigned, std.math.log2_int(u16, Bits) + 1);
+        pub const Signed = T != U;
 
         fn toUnsigned(value: T) U {
             return @bitCast(value);
@@ -55,6 +56,7 @@ pub fn KnownRange(T: type) type {
 
         pub fn eql(self: Self, other: Self) bool {
             assert(self.min <= self.max);
+            assert(other.min <= other.max);
             return self.min == other.min and self.max == other.max;
         }
 
@@ -71,7 +73,7 @@ pub fn KnownRange(T: type) type {
         }
 
         fn countLeadingSignBits(value: T) Rep.BitCount {
-            const uv = @as(Rep.U, @bitCast(value));
+            const uv = Rep.toUnsigned(value);
             return (if (value < 0) @clz(~uv) else @clz(uv)) - 1;
         }
 
@@ -85,18 +87,15 @@ pub fn KnownRange(T: type) type {
                 countLeadingSignBits(self.max),
             );
 
-            // print("{f}: sign={d}\n", .{ self, sign });
             const sign_mask = @as(Rep.U, std.math.maxInt(Rep.U)) >>
                 @as(Rep.Shift, @intCast(sign));
-            const u_min: Rep.U = @bitCast(self.min);
-            const u_max: Rep.U = @bitCast(self.max);
+            const u_min = Rep.toUnsigned(self.min);
+            const u_max = Rep.toUnsigned(self.max);
             const same_msb = @clz((u_min & sign_mask) ^ (u_max & sign_mask));
             assert(same_msb < Rep.Bits);
             const mask: Rep.U = sign_mask & ~(@as(Rep.U, std.math.maxInt(Rep.U)) >>
                 @as(Rep.Shift, @intCast(same_msb)));
-            const bits: KnownBits(T) = .initSigned(u_min & mask, ~u_min & mask, sign);
-            // print("bits: {f}\n", .{bits});
-            return bits;
+            return .initSigned(u_min & mask, ~u_min & mask, sign);
         }
     };
 }
@@ -152,7 +151,7 @@ pub fn KnownBits(T: type) type {
         }
 
         fn assertValid(self: Self) void {
-            if (Rep.U == T)
+            if (!Rep.Signed)
                 assert(self.sign == 0);
             const sign_mask = self.signMask();
             assert(sign_mask & self.set & self.clear == 0);
@@ -210,9 +209,11 @@ pub fn KnownBits(T: type) type {
                 const mask = @as(Rep.U, std.math.maxInt(Rep.U)) >>
                     @as(Rep.Shift, @intCast(known_msbs));
 
-                if (T != Rep.U and known_msbs == 0)
+                if (Rep.Signed and known_msbs == 0)
                     break :blk .init(std.math.minInt(T), std.math.maxInt(T));
 
+                // If we know the MSB we don't straddle negative and positive.
+                // This works either side of the zero line.
                 break :blk .init(
                     Rep.fromUnsigned(set & ~mask),
                     Rep.fromUnsigned(set | mask),
@@ -348,8 +349,11 @@ test KnownDomain {
     const kds4: KDS = .initRange(.init(-15, 15));
     print("kds4: {f} {f}\n", .{ kds4, kds4.refine() });
 
-    const kds5: KDS = .initBits(.initSigned(0x2a, 0x55, 8));
+    const kds5: KDS = .initRange(.init(0, 1));
     print("kds5: {f} {f}\n", .{ kds5, kds5.refine() });
+
+    const kds6: KDS = .initBits(.initSigned(0x2a, 0x55, 8));
+    print("kds6: {f} {f}\n", .{ kds6, kds6.refine() });
 }
 
 const Tag = enum(u8) {
