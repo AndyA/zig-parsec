@@ -145,8 +145,8 @@ pub fn KnownBits(T: type) type {
             const sign_mask = self.signMask();
             for (0..R.Bits) |b| {
                 const mask: R.U = @as(R.U, 1) << @as(R.Shift, @intCast(R.Bits - b - 1));
-                buf[b] = if (self.clear & mask != 0) '0' // definite 0
-                    else if (self.set & mask != 0) '1' // definite 1
+                buf[b] = if (self.clear & mask != 0) '0' // known 0
+                    else if (self.set & mask != 0) '1' // known 1
                     else if (sign_mask & mask != 0) 's' // sign extension
                     else 'x'; // unknown
             }
