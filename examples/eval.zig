@@ -27,7 +27,7 @@ fn IntRep(T: type) type {
 }
 
 pub fn KnownRange(T: type) type {
-    const Rep = IntRep(T);
+    const R = IntRep(T);
 
     return struct {
         const Self = @This();
@@ -72,8 +72,8 @@ pub fn KnownRange(T: type) type {
             return .init(@min(self.min, other.min), @max(self.max, other.max));
         }
 
-        fn countLeadingSignBits(value: T) Rep.BitCount {
-            const uv = Rep.toUnsigned(value);
+        fn countLeadingSignBits(value: T) R.BitCount {
+            const uv = R.toUnsigned(value);
             return (if (value < 0) @clz(~uv) else @clz(uv)) - 1;
         }
 
@@ -87,14 +87,14 @@ pub fn KnownRange(T: type) type {
                 countLeadingSignBits(self.max),
             );
 
-            const sign_mask = @as(Rep.U, std.math.maxInt(Rep.U)) >>
-                @as(Rep.Shift, @intCast(sign));
-            const u_min = Rep.toUnsigned(self.min);
-            const u_max = Rep.toUnsigned(self.max);
+            const sign_mask = @as(R.U, std.math.maxInt(R.U)) >>
+                @as(R.Shift, @intCast(sign));
+            const u_min = R.toUnsigned(self.min);
+            const u_max = R.toUnsigned(self.max);
             const same_msb = @clz((u_min & sign_mask) ^ (u_max & sign_mask));
-            assert(same_msb < Rep.Bits);
-            const mask: Rep.U = sign_mask & ~(@as(Rep.U, std.math.maxInt(Rep.U)) >>
-                @as(Rep.Shift, @intCast(same_msb)));
+            assert(same_msb < R.Bits);
+            const mask: R.U = sign_mask & ~(@as(R.U, std.math.maxInt(R.U)) >>
+                @as(R.Shift, @intCast(same_msb)));
             return .initSigned(u_min & mask, ~u_min & mask, sign);
         }
     };
@@ -106,36 +106,36 @@ test KnownRange {
 }
 
 pub fn KnownBits(T: type) type {
-    const Rep = IntRep(T);
+    const R = IntRep(T);
 
     return struct {
         const Self = @This();
         pub const empty: Self = .{ .set = 0, .clear = 0 };
 
-        set: Rep.U,
-        clear: Rep.U,
-        sign: Rep.BitCount = 0,
+        set: R.U,
+        clear: R.U,
+        sign: R.BitCount = 0,
 
-        pub fn initSigned(set: Rep.U, clear: Rep.U, sign: Rep.BitCount) Self {
+        pub fn initSigned(set: R.U, clear: R.U, sign: R.BitCount) Self {
             const self: Self = .{ .set = set, .clear = clear, .sign = sign };
             self.assertValid();
             return self;
         }
 
-        pub fn init(set: Rep.U, clear: Rep.U) Self {
+        pub fn init(set: R.U, clear: R.U) Self {
             return initSigned(set, clear, 0);
         }
 
         pub fn initExact(value: T) Self {
-            const uv = Rep.toUnsigned(value);
+            const uv = R.toUnsigned(value);
             return .init(uv, ~uv);
         }
 
         pub fn format(self: Self, writer: *Io.Writer) Io.Writer.Error!void {
-            var buf: [Rep.Bits]u8 = undefined;
+            var buf: [R.Bits]u8 = undefined;
             const sign_mask = self.signMask();
-            for (0..Rep.Bits) |bit| {
-                const mask: Rep.U = @as(Rep.U, 1) << @as(Rep.Shift, @intCast(Rep.Bits - bit - 1));
+            for (0..R.Bits) |bit| {
+                const mask: R.U = @as(R.U, 1) << @as(R.Shift, @intCast(R.Bits - bit - 1));
                 const sign = (sign_mask & mask) != 0;
                 const set = (self.set & mask) != 0;
                 const clear = (self.clear & mask) != 0;
@@ -144,14 +144,14 @@ pub fn KnownBits(T: type) type {
             _ = try writer.write(&buf);
         }
 
-        fn signMask(self: Self) Rep.U {
-            assert(self.sign < Rep.Bits);
-            return ~(@as(Rep.U, std.math.maxInt(Rep.U)) >>
-                @as(Rep.Shift, @intCast(self.sign)));
+        fn signMask(self: Self) R.U {
+            assert(self.sign < R.Bits);
+            return ~(@as(R.U, std.math.maxInt(R.U)) >>
+                @as(R.Shift, @intCast(self.sign)));
         }
 
         fn assertValid(self: Self) void {
-            if (!Rep.Signed)
+            if (!R.Signed)
                 assert(self.sign == 0);
             const sign_mask = self.signMask();
             assert(sign_mask & self.set & self.clear == 0);
@@ -196,39 +196,39 @@ pub fn KnownBits(T: type) type {
             );
         }
 
-        fn simpleRange(set: Rep.U, clear: Rep.U) KnownRange(T) {
+        fn simpleRange(set: R.U, clear: R.U) KnownRange(T) {
             if (set == ~clear) // exact?
-                return .initExact(Rep.fromUnsigned(set));
+                return .initExact(R.fromUnsigned(set));
 
             const known = ~(set | clear);
 
             const known_msbs = @clz(known);
-            assert(known_msbs < Rep.Bits);
+            assert(known_msbs < R.Bits);
 
             const left: KnownRange(T) = blk: {
-                const mask = @as(Rep.U, std.math.maxInt(Rep.U)) >>
-                    @as(Rep.Shift, @intCast(known_msbs));
-
-                if (Rep.Signed and known_msbs == 0)
+                // If we're signed and don't know the MSB the range crosses zero
+                if (R.Signed and known_msbs == 0)
                     break :blk .init(std.math.minInt(T), std.math.maxInt(T));
 
-                // If we know the MSB we don't straddle negative and positive.
+                const mask = @as(R.U, std.math.maxInt(R.U)) >>
+                    @as(R.Shift, @intCast(known_msbs));
+
                 // This works either side of the zero line.
                 break :blk .init(
-                    Rep.fromUnsigned(set & ~mask),
-                    Rep.fromUnsigned(set | mask),
+                    R.fromUnsigned(set & ~mask),
+                    R.fromUnsigned(set | mask),
                 );
             };
 
             const known_lsbs = @ctz(known);
-            assert(known_lsbs + known_msbs < Rep.Bits);
+            assert(known_lsbs + known_msbs < R.Bits);
 
             return blk: {
-                const mask = @as(Rep.U, std.math.maxInt(Rep.U)) <<
-                    @as(Rep.Shift, @intCast(known_lsbs));
+                const mask = @as(R.U, std.math.maxInt(R.U)) <<
+                    @as(R.Shift, @intCast(known_lsbs));
                 const fill = set & ~mask;
-                const min = Rep.fromUnsigned(Rep.toUnsigned(left.min) & mask | fill);
-                const max = Rep.fromUnsigned(Rep.toUnsigned(left.max) & mask | fill);
+                const min = R.fromUnsigned(R.toUnsigned(left.min) & mask | fill);
+                const max = R.fromUnsigned(R.toUnsigned(left.max) & mask | fill);
                 break :blk .init(min, max);
             };
         }
@@ -239,8 +239,8 @@ pub fn KnownBits(T: type) type {
                 return simpleRange(self.set, self.clear);
 
             // print("sign={d}\n", .{self.sign});
-            const sign_mask = ~(if (self.sign + 1 == Rep.Bits) 0 else @as(Rep.U, std.math.maxInt(Rep.U)) >>
-                @as(Rep.Shift, @intCast(self.sign + 1)));
+            const sign_mask = ~(if (self.sign + 1 == R.Bits) 0 else @as(R.U, std.math.maxInt(R.U)) >>
+                @as(R.Shift, @intCast(self.sign + 1)));
             const pos_range = simpleRange(self.set, self.clear | sign_mask);
             const neg_range = simpleRange(self.set | sign_mask, self.clear);
             return .init(neg_range.min, pos_range.max);
