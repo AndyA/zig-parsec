@@ -13,6 +13,7 @@ fn IntRep(T: type) type {
         pub const Bits = @typeInfo(T).int.bits;
         pub const U = @Int(.unsigned, Bits);
         pub const Shift = @Int(.unsigned, std.math.log2_int(u16, Bits));
+        pub const BitCount = @Int(.unsigned, std.math.log2_int(u16, Bits) + 1);
 
         fn toUnsigned(value: T) U {
             return @bitCast(value);
@@ -69,17 +70,31 @@ pub fn KnownRange(T: type) type {
             return .init(@min(self.min, other.min), @max(self.max, other.max));
         }
 
+        fn countLeadingSignBits(value: T) Rep.BitCount {
+            const uv = @as(Rep.U, @bitCast(value));
+            return (if (value < 0) @clz(~uv) else @clz(uv)) - 1;
+        }
+
         pub fn toBits(self: Self) KnownBits(T) {
             assert(self.min <= self.max);
             if (self.isExact())
                 return .initExact(self.min);
+            const sign = if (T == Rep.U) 0 else @min(
+                countLeadingSignBits(self.min),
+                countLeadingSignBits(self.max),
+            );
+            print("{f}: sign={d}\n", .{ self, sign });
+            const sign_mask = @as(Rep.U, std.math.maxInt(Rep.U)) >>
+                @as(Rep.Shift, @intCast(sign));
             const u_min: Rep.U = @bitCast(self.min);
             const u_max: Rep.U = @bitCast(self.max);
-            const same_msb = @clz(u_min ^ u_max);
+            const same_msb = @clz((u_min & sign_mask) ^ (u_max & sign_mask));
             assert(same_msb < Rep.Bits);
-            const mask: Rep.U = ~(@as(Rep.U, std.math.maxInt(Rep.U)) >>
+            const mask: Rep.U = sign_mask & ~(@as(Rep.U, std.math.maxInt(Rep.U)) >>
                 @as(Rep.Shift, @intCast(same_msb)));
-            return .init(u_min & mask, ~u_min & mask);
+            const bits: KnownBits(T) = .initSigned(u_min & mask, ~u_min & mask, sign);
+            print("bits: {f}\n", .{bits});
+            return bits;
         }
     };
 }
@@ -98,9 +113,14 @@ pub fn KnownBits(T: type) type {
 
         set: Rep.U,
         clear: Rep.U,
+        sign: Rep.BitCount = 0,
 
         pub fn init(set: Rep.U, clear: Rep.U) Self {
             return .{ .set = set, .clear = clear };
+        }
+
+        pub fn initSigned(set: Rep.U, clear: Rep.U, sign: Rep.BitCount) Self {
+            return .{ .set = set, .clear = clear, .sign = sign };
         }
 
         pub fn initExact(value: T) Self {
@@ -110,29 +130,41 @@ pub fn KnownBits(T: type) type {
 
         pub fn format(self: Self, writer: *Io.Writer) Io.Writer.Error!void {
             var buf: [Rep.Bits]u8 = undefined;
+            const sign_mask = self.signMask();
             for (0..Rep.Bits) |bit| {
                 const mask: Rep.U = @as(Rep.U, 1) << @as(Rep.Shift, @intCast(Rep.Bits - bit - 1));
+                const sign = (sign_mask & mask) != 0;
                 const set = (self.set & mask) != 0;
                 const clear = (self.clear & mask) != 0;
-                buf[bit] = if (set) '1' else if (clear) '0' else 'x';
+                buf[bit] = if (sign) 's' else if (set) '1' else if (clear) '0' else 'x';
             }
             _ = try writer.write(&buf);
         }
 
+        fn signMask(self: Self) Rep.U {
+            assert(self.sign < Rep.Bits);
+            return ~(@as(Rep.U, std.math.maxInt(Rep.U)) >>
+                @as(Rep.Shift, @intCast(self.sign)));
+        }
+
+        fn assertValid(self: Self) void {
+            assert(self.signMask() & self.set & self.clear == 0);
+        }
+
         pub fn isExact(self: Self) bool {
-            assert(self.set & self.clear == 0);
+            self.assertValid();
             return self.set == ~self.clear;
         }
 
         pub fn eql(self: Self, other: Self) bool {
-            assert(self.set & self.clear == 0);
-            assert(other.set & other.clear == 0);
+            self.assertValid();
+            other.assertValid();
             return self.set == other.set and self.clear == other.clear;
         }
 
         pub fn narrow(self: Self, other: Self) Self {
-            assert(self.set & self.clear == 0);
-            assert(other.set & other.clear == 0);
+            self.assertValid();
+            other.assertValid();
             const set = self.set | other.set;
             const clear = self.clear | other.clear;
             assert(set & clear == 0);
@@ -140,8 +172,8 @@ pub fn KnownBits(T: type) type {
         }
 
         pub fn widen(self: Self, other: Self) Self {
-            assert(self.set & self.clear == 0);
-            assert(other.set & other.clear == 0);
+            self.assertValid();
+            other.assertValid();
             const set = self.set & other.set;
             const clear = self.clear & other.clear;
             assert(set & clear == 0);
@@ -149,7 +181,7 @@ pub fn KnownBits(T: type) type {
         }
 
         fn toUnsignedRange(self: Self) KnownRange(Rep.U) {
-            assert(self.set & self.clear == 0);
+            self.assertValid();
 
             if (self.isExact())
                 return .initExact(self.set);
@@ -277,6 +309,8 @@ test KnownDomain {
     const KDS = KnownDomain(i16);
     const kds1: KDS = .initRange(.init(-300, -1));
     print("kds1: {f}\n", .{kds1.refine()});
+    const kds2: KDS = .initRange(.init(-1, 0));
+    print("kds2: {f}\n", .{kds2.refine()});
 }
 
 const Tag = enum(u8) {
