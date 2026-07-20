@@ -115,12 +115,14 @@ pub fn KnownBits(T: type) type {
         clear: Rep.U,
         sign: Rep.BitCount = 0,
 
-        pub fn init(set: Rep.U, clear: Rep.U) Self {
-            return .{ .set = set, .clear = clear };
+        pub fn initSigned(set: Rep.U, clear: Rep.U, sign: Rep.BitCount) Self {
+            const self: Self = .{ .set = set, .clear = clear, .sign = sign };
+            self.assertValid();
+            return self;
         }
 
-        pub fn initSigned(set: Rep.U, clear: Rep.U, sign: Rep.BitCount) Self {
-            return .{ .set = set, .clear = clear, .sign = sign };
+        pub fn init(set: Rep.U, clear: Rep.U) Self {
+            return initSigned(set, clear, 0);
         }
 
         pub fn initExact(value: T) Self {
@@ -165,19 +167,21 @@ pub fn KnownBits(T: type) type {
         pub fn narrow(self: Self, other: Self) Self {
             self.assertValid();
             other.assertValid();
-            const set = self.set | other.set;
-            const clear = self.clear | other.clear;
-            assert(set & clear == 0);
-            return .init(set, clear);
+            return .initSigned(
+                self.set | other.set,
+                self.clear | other.clear,
+                @max(self.sign, other.sign),
+            );
         }
 
         pub fn widen(self: Self, other: Self) Self {
             self.assertValid();
             other.assertValid();
-            const set = self.set & other.set;
-            const clear = self.clear & other.clear;
-            assert(set & clear == 0);
-            return .init(set, clear);
+            return .initSigned(
+                self.set & other.set,
+                self.clear & other.clear,
+                @min(self.sign, other.sign),
+            );
         }
 
         fn toUnsignedRange(self: Self) KnownRange(Rep.U) {
