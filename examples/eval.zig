@@ -196,7 +196,7 @@ pub fn KnownBits(T: type) type {
             );
         }
 
-        pub fn simpleRange(set: Rep.U, clear: Rep.U) KnownRange(T) {
+        fn simpleRange(set: Rep.U, clear: Rep.U) KnownRange(T) {
             if (set == ~clear) // exact?
                 return .initExact(Rep.fromUnsigned(set));
 
