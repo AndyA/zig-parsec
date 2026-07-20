@@ -143,9 +143,9 @@ pub fn KnownBits(T: type) type {
         pub fn format(self: Self, writer: *Io.Writer) Io.Writer.Error!void {
             var buf: [R.Bits]u8 = undefined;
             const sign_mask = self.signMask();
-            for (0..R.Bits) |bit| {
-                const mask: R.U = @as(R.U, 1) << @as(R.Shift, @intCast(R.Bits - bit - 1));
-                buf[bit] = if ((sign_mask & mask) != 0) 's' // sign extension
+            for (0..R.Bits) |b| {
+                const mask: R.U = @as(R.U, 1) << @as(R.Shift, @intCast(R.Bits - b - 1));
+                buf[b] = if ((sign_mask & mask) != 0) 's' // sign extension
                     else if ((self.set & mask) != 0) '1' // definite 1
                     else if ((self.clear & mask) != 0) '0' // definit 0
                     else 'x'; // unknown
