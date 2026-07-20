@@ -110,11 +110,20 @@ pub fn KnownBits(T: type) type {
 
     return struct {
         const Self = @This();
-        pub const empty: Self = .{ .set = 0, .clear = 0 };
+        pub const empty: Self = .{ .set = 0, .clear = 0, .sign = 0 };
 
+        /// 1 for every known 1 bit
         set: R.U,
+
+        /// 1 for every known 0 bit
         clear: R.U,
-        sign: R.BitCount = 0,
+
+        /// The number of sign extensions bits; for example an i16 that can be
+        /// either -1 or 0 would be modelled as `sssssssssssssssx` indicating
+        /// that the only significant bit is the least significant one and all
+        /// bits to the left of that are populated by sign extension. In that
+        /// case `sign` would be 15 and both `set` and `clear` would be 0.
+        sign: R.BitCount,
 
         pub fn initSigned(set: R.U, clear: R.U, sign: R.BitCount) Self {
             const self: Self = .{ .set = set, .clear = clear, .sign = sign };
@@ -136,10 +145,10 @@ pub fn KnownBits(T: type) type {
             const sign_mask = self.signMask();
             for (0..R.Bits) |bit| {
                 const mask: R.U = @as(R.U, 1) << @as(R.Shift, @intCast(R.Bits - bit - 1));
-                const sign = (sign_mask & mask) != 0;
-                const set = (self.set & mask) != 0;
-                const clear = (self.clear & mask) != 0;
-                buf[bit] = if (sign) 's' else if (set) '1' else if (clear) '0' else 'x';
+                buf[bit] = if ((sign_mask & mask) != 0) 's' // sign extension
+                    else if ((self.set & mask) != 0) '1' // definite 1
+                    else if ((self.clear & mask) != 0) '0' // definit 0
+                    else 'x'; // unknown
             }
             _ = try writer.write(&buf);
         }
@@ -159,7 +168,7 @@ pub fn KnownBits(T: type) type {
             // If we're handling sign extension it's axiomatic that we should
             // not know the value of the bit to the immediate right of the sign
             // extension bits. If we know that bit is 0 or 1 then we know the
-            // sign of the value and don't need to support sign extension.
+            // sign of the value and don't need sign extension.
             assert(sign_mask >> 1 & (self.set | self.clear) == 0);
         }
 
