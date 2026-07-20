@@ -79,11 +79,13 @@ pub fn KnownRange(T: type) type {
             assert(self.min <= self.max);
             if (self.isExact())
                 return .initExact(self.min);
-            const sign = if (T == Rep.U) 0 else @min(
+
+            const sign = if ((self.min < 0) == (self.max < 0)) 0 else @min(
                 countLeadingSignBits(self.min),
                 countLeadingSignBits(self.max),
             );
-            print("{f}: sign={d}\n", .{ self, sign });
+
+            // print("{f}: sign={d}\n", .{ self, sign });
             const sign_mask = @as(Rep.U, std.math.maxInt(Rep.U)) >>
                 @as(Rep.Shift, @intCast(sign));
             const u_min: Rep.U = @bitCast(self.min);
@@ -93,7 +95,7 @@ pub fn KnownRange(T: type) type {
             const mask: Rep.U = sign_mask & ~(@as(Rep.U, std.math.maxInt(Rep.U)) >>
                 @as(Rep.Shift, @intCast(same_msb)));
             const bits: KnownBits(T) = .initSigned(u_min & mask, ~u_min & mask, sign);
-            print("bits: {f}\n", .{bits});
+            // print("bits: {f}\n", .{bits});
             return bits;
         }
     };
@@ -150,7 +152,16 @@ pub fn KnownBits(T: type) type {
         }
 
         fn assertValid(self: Self) void {
-            assert(self.signMask() & self.set & self.clear == 0);
+            if (Rep.U == T)
+                assert(self.sign == 0);
+            const sign_mask = self.signMask();
+            assert(sign_mask & self.set & self.clear == 0);
+
+            // If we're handling sign extension it's axiomatic that we should
+            // not know the value of the bit to the immediate right of the sign
+            // extension bits. If we know that bit is 0 or 1 then we know the
+            // sign of the value and don't need to support sign extension.
+            assert(sign_mask >> 1 & (self.set | self.clear) == 0);
         }
 
         pub fn isExact(self: Self) bool {
@@ -161,7 +172,9 @@ pub fn KnownBits(T: type) type {
         pub fn eql(self: Self, other: Self) bool {
             self.assertValid();
             other.assertValid();
-            return self.set == other.set and self.clear == other.clear;
+            return self.sign == other.sign and
+                self.set == other.set and
+                self.clear == other.clear;
         }
 
         pub fn narrow(self: Self, other: Self) Self {
@@ -184,22 +197,26 @@ pub fn KnownBits(T: type) type {
             );
         }
 
-        fn toUnsignedRange(self: Self) KnownRange(Rep.U) {
-            self.assertValid();
+        pub fn simpleRange(set: Rep.U, clear: Rep.U) KnownRange(T) {
+            if (set == ~clear) // exact?
+                return .initExact(Rep.fromUnsigned(set));
 
-            if (self.isExact())
-                return .initExact(self.set);
-
-            const known = ~(self.set | self.clear);
+            const known = ~(set | clear);
 
             const known_msbs = @clz(known);
             assert(known_msbs < Rep.Bits);
 
-            const left: KnownRange(Rep.U) = blk: {
+            const left: KnownRange(T) = blk: {
                 const mask = @as(Rep.U, std.math.maxInt(Rep.U)) >>
                     @as(Rep.Shift, @intCast(known_msbs));
-                const min = self.set & ~mask;
-                break :blk .init(min, min | mask);
+
+                if (T != Rep.U and known_msbs == 0)
+                    break :blk .init(std.math.minInt(T), std.math.maxInt(T));
+
+                break :blk .init(
+                    Rep.fromUnsigned(set & ~mask),
+                    Rep.fromUnsigned(set | mask),
+                );
             };
 
             const known_lsbs = @ctz(known);
@@ -208,18 +225,24 @@ pub fn KnownBits(T: type) type {
             return blk: {
                 const mask = @as(Rep.U, std.math.maxInt(Rep.U)) <<
                     @as(Rep.Shift, @intCast(known_lsbs));
-                const fill = self.set & ~mask;
-                break :blk .init(left.min & mask | fill, left.max & mask | fill);
+                const fill = set & ~mask;
+                const min = Rep.fromUnsigned(Rep.toUnsigned(left.min) & mask | fill);
+                const max = Rep.fromUnsigned(Rep.toUnsigned(left.max) & mask | fill);
+                break :blk .init(min, max);
             };
         }
 
         pub fn toRange(self: Self) KnownRange(T) {
-            const u_range = self.toUnsignedRange();
-            if (T == Rep.U)
-                return u_range;
-            const a: T = @bitCast(u_range.min);
-            const b: T = @bitCast(u_range.max);
-            return .init(@min(a, b), @max(a, b));
+            self.assertValid();
+            if (self.sign == 0)
+                return simpleRange(self.set, self.clear);
+
+            // print("sign={d}\n", .{self.sign});
+            const sign_mask = ~(if (self.sign + 1 == Rep.Bits) 0 else @as(Rep.U, std.math.maxInt(Rep.U)) >>
+                @as(Rep.Shift, @intCast(self.sign + 1)));
+            const pos_range = simpleRange(self.set, self.clear | sign_mask);
+            const neg_range = simpleRange(self.set | sign_mask, self.clear);
+            return .init(neg_range.min, pos_range.max);
         }
     };
 }
@@ -308,13 +331,25 @@ pub fn KnownDomain(T: type) type {
 
 test KnownDomain {
     const KDU = KnownDomain(u16);
-    const kdu1: KDU = .initRange(.init(64, 127));
-    print("kdu1: {f}\n", .{kdu1.refine()});
     const KDS = KnownDomain(i16);
+
+    const kdu1: KDU = .initRange(.init(64, 127));
+    print("kdu1: {f} {f}\n", .{ kdu1, kdu1.refine() });
+
     const kds1: KDS = .initRange(.init(-300, -1));
-    print("kds1: {f}\n", .{kds1.refine()});
+    print("kds1: {f} {f}\n", .{ kds1, kds1.refine() });
+
     const kds2: KDS = .initRange(.init(-1, 0));
-    print("kds2: {f}\n", .{kds2.refine()});
+    print("kds2: {f} {f}\n", .{ kds2, kds2.refine() });
+
+    const kds3: KDS = .initRange(.init(-32768, 32767));
+    print("kds3: {f} {f}\n", .{ kds3, kds3.refine() });
+
+    const kds4: KDS = .initRange(.init(-15, 15));
+    print("kds4: {f} {f}\n", .{ kds4, kds4.refine() });
+
+    const kds5: KDS = .initBits(.initSigned(0x2a, 0x55, 8));
+    print("kds5: {f} {f}\n", .{ kds5, kds5.refine() });
 }
 
 const Tag = enum(u8) {
