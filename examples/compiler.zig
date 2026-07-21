@@ -4,16 +4,13 @@ const assert = std.debug.assert;
 const expectEqualDeep = std.testing.expectEqualDeep;
 
 const Io = std.Io;
-const Allocator = std.mem.Allocator;
-
-const zpc = @import("zpc");
 
 fn IntRep(T: type) type {
     return struct {
         pub const Bits = @typeInfo(T).int.bits;
         pub const U = @Int(.unsigned, Bits);
-        pub const Shift = @Int(.unsigned, std.math.log2_int(u16, Bits));
-        pub const BitCount = @Int(.unsigned, std.math.log2_int(u16, Bits) + 1);
+        pub const Shift = @Int(.unsigned, std.math.log2_int_ceil(u16, Bits));
+        pub const BitCount = @Int(.unsigned, std.math.log2_int_ceil(u16, Bits) + 1);
         pub const Signed = T != U;
 
         fn toUnsigned(value: T) U {
@@ -47,6 +44,10 @@ pub fn KnownRange(T: type) type {
 
         pub fn format(self: Self, writer: *Io.Writer) Io.Writer.Error!void {
             try writer.print("{d}..{d}", .{ self.min, self.max });
+        }
+
+        pub fn json(self: Self, writer: *Io.Writer) Io.Writer.Error!void {
+            try writer.print("{{\"min\":{d},\"max\":{d}}}", .{ self.min, self.max });
         }
 
         pub fn isExact(self: Self) bool {
@@ -151,6 +152,13 @@ pub fn KnownBits(T: type) type {
                     else 'x'; // unknown
             }
             _ = try writer.write(&buf);
+        }
+
+        pub fn json(self: Self, writer: *Io.Writer) Io.Writer.Error!void {
+            try writer.print(
+                "{{\"set\":{d},\"clear\":{d},\"sign\":{d}}}",
+                .{ self.set, self.clear, self.sign },
+            );
         }
 
         fn signMask(self: Self) R.U {
@@ -298,6 +306,14 @@ pub fn KnownDomain(T: type) type {
             );
         }
 
+        pub fn json(self: Self, writer: *Io.Writer) Io.Writer.Error!void {
+            try writer.writeAll("{\"range\":");
+            try self.range.json(writer);
+            try writer.writeAll(",\"bits\":");
+            try self.bits.json(writer);
+            try writer.writeAll("}");
+        }
+
         pub fn narrowRange(self: Self, range: Range) Self {
             return .{
                 .range = self.range.narrow(range),
@@ -341,41 +357,115 @@ pub fn KnownDomain(T: type) type {
 
 test KnownDomain {}
 
-fn exhaust(T: type) void {
-    _ = T;
+fn exhaustRanges(T: type, w: *Io.Writer) !void {
+    const KD = KnownDomain(T);
+    const start: T = std.math.minInt(T);
+    const tag = @typeName(T) ++ ":range";
+
+    var min: T = start;
+    while (true) {
+        var max: T = min;
+        while (true) {
+            const kd: KD = .initRange(.init(min, max));
+            try w.writeAll("{\"tag\":\"" ++ tag ++ "\",\"kd\":");
+            try kd.refine().json(w);
+            try w.writeAll("}\n");
+            max +%= 1;
+            if (max == start) break;
+        }
+        min +%= 1;
+        if (min == start) break;
+    }
 }
 
-pub fn main() !void {
-    exhaust(i16);
-    exhaust(u16);
+fn exhaustBits(T: type, w: *Io.Writer) !void {
+    const KD = KnownDomain(T);
+    const R = IntRep(T);
+    const tag = @typeName(T) ++ ":bits";
 
-    const KDU = KnownDomain(u16);
-    const KDS = KnownDomain(i16);
+    {
+        var set: R.U = 0;
+        while (true) {
+            var clear: R.U = 0;
+            while (true) {
+                if (set & clear == 0) {
+                    const kd: KD = .initBits(.init(set, clear));
+                    try w.writeAll("{\"tag\":\"" ++ tag ++ "\",\"kd\":");
+                    try kd.refine().json(w);
+                    try w.writeAll("}\n");
+                }
+                clear +%= 1;
+                if (clear == 0) break;
+            }
+            set +%= 1;
+            if (set == 0) break;
+        }
+    }
 
-    const kdu1: KDU = .initRange(.init(64, 127));
-    print("kdu1: {f} {f}\n", .{ kdu1, kdu1.refine() });
+    if (R.Signed) {
+        for (1..R.Bits) |sign| {
+            const max: R.U = @as(R.U, 1) << @as(R.Shift, @intCast(R.Bits - 1 - sign));
+            for (0..max) |s| {
+                for (0..max) |c| {
+                    const set: R.U = @intCast(s);
+                    const clear: R.U = @intCast(c);
+                    if (set & clear == 0) {
+                        const kd: KD = .initBits(.initSigned(set, clear, @intCast(sign)));
+                        try w.writeAll("{\"tag\":\"" ++ tag ++ "\",\"kd\":");
+                        try kd.refine().json(w);
+                        try w.writeAll("}\n");
+                    }
+                }
+            }
+        }
+    }
+}
 
-    const kds1: KDS = .initRange(.init(-300, -1));
-    print("kds1: {f} {f}\n", .{ kds1, kds1.refine() });
+fn exhaust(T: type, w: *Io.Writer) !void {
+    try exhaustRanges(T, w);
+    try exhaustBits(T, w);
+}
 
-    const kds2: KDS = .initRange(.init(-1, 0));
-    print("kds2: {f} {f}\n", .{ kds2, kds2.refine() });
+pub fn main(init: std.process.Init) !void {
+    var w_buf: [65536]u8 = undefined;
+    var w = std.Io.File.stdout().writer(init.io, &w_buf);
 
-    const kds3: KDS = .initRange(.init(-32768, 32767));
-    print("kds3: {f} {f}\n", .{ kds3, kds3.refine() });
+    try exhaust(i3, &w.interface);
+    try exhaust(u3, &w.interface);
+    try exhaust(i8, &w.interface);
+    try exhaust(u8, &w.interface);
 
-    const kds4: KDS = .initRange(.init(-15, 15));
-    print("kds4: {f} {f}\n", .{ kds4, kds4.refine() });
+    if (false) {
+        const KDU = KnownDomain(u16);
+        const KDS = KnownDomain(i16);
 
-    const kds5: KDS = .initRange(.init(0, 1));
-    print("kds5: {f} {f}\n", .{ kds5, kds5.refine() });
+        const kdu1: KDU = .initRange(.init(64, 127));
+        print("kdu1: {f} {f}\n", .{ kdu1, kdu1.refine() });
 
-    const kds6: KDS = .initBits(.initSigned(0x2a, 0x55, 8));
-    print("kds6: {f} {f}\n", .{ kds6, kds6.refine() });
+        const kds1: KDS = .initRange(.init(-300, -1));
+        print("kds1: {f} {f}\n", .{ kds1, kds1.refine() });
 
-    const kds7: KDS = .initExact(0x55aa);
-    print("kds7: {f} {f}\n", .{ kds7, kds7.refine() });
+        const kds2: KDS = .initRange(.init(-1, 0));
+        print("kds2: {f} {f}\n", .{ kds2, kds2.refine() });
 
-    const kds8: KDS = .initRange(.initExact(0x55aa));
-    print("kds8: {f} {f}\n", .{ kds8, kds8.refine() });
+        const kds3: KDS = .initRange(.init(-32768, 32767));
+        print("kds3: {f} {f}\n", .{ kds3, kds3.refine() });
+
+        const kds4: KDS = .initRange(.init(-15, 15));
+        print("kds4: {f} {f}\n", .{ kds4, kds4.refine() });
+
+        const kds5: KDS = .initRange(.init(0, 1));
+        print("kds5: {f} {f}\n", .{ kds5, kds5.refine() });
+
+        const kds6: KDS = .initBits(.initSigned(0x2a, 0x55, 8));
+        print("kds6: {f} {f}\n", .{ kds6, kds6.refine() });
+
+        const kds7: KDS = .initExact(0x55aa);
+        print("kds7: {f} {f}\n", .{ kds7, kds7.refine() });
+
+        const kds8: KDS = .initRange(.initExact(0x55aa));
+        print("kds8: {f} {f}\n", .{ kds8, kds8.refine() });
+    }
+
+    try w.flush();
 }
