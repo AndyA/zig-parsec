@@ -339,7 +339,16 @@ pub fn KnownDomain(T: type) type {
     };
 }
 
-test KnownDomain {
+test KnownDomain {}
+
+fn exhaust(T: type) void {
+    _ = T;
+}
+
+pub fn main() !void {
+    exhaust(i16);
+    exhaust(u16);
+
     const KDU = KnownDomain(u16);
     const KDS = KnownDomain(i16);
 
@@ -369,8 +378,4 @@ test KnownDomain {
 
     const kds8: KDS = .initRange(.initExact(0x55aa));
     print("kds8: {f} {f}\n", .{ kds8, kds8.refine() });
-}
-
-pub fn main(init: std.process.Init) !void {
-    _ = init;
 }
