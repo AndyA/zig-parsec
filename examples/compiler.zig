@@ -343,29 +343,29 @@ pub fn main(_: std.process.Init) !void {
     const KDS = KnownDomain(i16);
 
     const kdu1: KDU = .initRange(.init(64, 127));
-    print("kdu1: {f} {f}\n", .{ kdu1, kdu1.refine() });
+    print("kdu1: {f} -> {f}\n", .{ kdu1, kdu1.refine() });
 
     const kds1: KDS = .initRange(.init(-300, -1));
-    print("kds1: {f} {f}\n", .{ kds1, kds1.refine() });
+    print("kds1: {f} -> {f}\n", .{ kds1, kds1.refine() });
 
     const kds2: KDS = .initRange(.init(-1, 0));
-    print("kds2: {f} {f}\n", .{ kds2, kds2.refine() });
+    print("kds2: {f} -> {f}\n", .{ kds2, kds2.refine() });
 
     const kds3: KDS = .initRange(.init(-32768, 32767));
-    print("kds3: {f} {f}\n", .{ kds3, kds3.refine() });
+    print("kds3: {f} -> {f}\n", .{ kds3, kds3.refine() });
 
     const kds4: KDS = .initRange(.init(-15, 15));
-    print("kds4: {f} {f}\n", .{ kds4, kds4.refine() });
+    print("kds4: {f} -> {f}\n", .{ kds4, kds4.refine() });
 
     const kds5: KDS = .initRange(.init(0, 1));
-    print("kds5: {f} {f}\n", .{ kds5, kds5.refine() });
+    print("kds5: {f} -> {f}\n", .{ kds5, kds5.refine() });
 
     const kds6: KDS = .initBits(.initSigned(0x2a, 0x55, 8));
-    print("kds6: {f} {f}\n", .{ kds6, kds6.refine() });
+    print("kds6: {f} -> {f}\n", .{ kds6, kds6.refine() });
 
     const kds7: KDS = .initExact(0x55aa);
-    print("kds7: {f} {f}\n", .{ kds7, kds7.refine() });
+    print("kds7: {f} -> {f}\n", .{ kds7, kds7.refine() });
 
     const kds8: KDS = .initRange(.initExact(0x55aa));
-    print("kds8: {f} {f}\n", .{ kds8, kds8.refine() });
+    print("kds8: {f} -> {f}\n", .{ kds8, kds8.refine() });
 }
