@@ -10,14 +10,14 @@ const ct = @import("comptime.zig");
 
 pub const ZpcError = error{OutOfMemory};
 
-pub const ZpcPhase = enum { COMPTIME, RUNTIME };
+pub const ZpcPhase = enum { comp, run };
 
 pub fn ZpcToken(comptime Tag: type, comptime phase: ZpcPhase) type {
     return struct {
         const Self = @This();
         pub const ArrayList = switch (phase) {
-            .COMPTIME => ct.ComptimeArray(Self),
-            .RUNTIME => std.ArrayList(Self),
+            .comp => ct.ComptimeArray(Self),
+            .run => std.ArrayList(Self),
         };
         pub const NOP: Tag = @enumFromInt(0);
 
@@ -159,7 +159,7 @@ pub fn ZpcToken(comptime Tag: type, comptime phase: ZpcPhase) type {
 pub fn ZpcResult(comptime Token: type) type {
     return struct {
         const Self = @This();
-        // const Token = ZpcToken(Tag, .RUNTIME);
+        // const Token = ZpcToken(Tag, .run);
 
         pub const Formatter = struct {
             token: *const Self,
@@ -239,6 +239,10 @@ pub fn ZpcParser(comptime Context: type, comptime Result: type) type {
     return fn (ctx: Context, input: []const u8) ZpcError!Result;
 }
 
+pub fn ZpcParserForTag(comptime Context: type, comptime Tag: type, comptime phase: ZpcPhase) type {
+    return ZpcParser(Context, ZpcResult(ZpcToken(Tag, phase)));
+}
+
 const TestTag = enum(u8) {
     // Don't call it NOP so we don't use it by mistake.
     NOT_NOP,
@@ -263,7 +267,7 @@ const TestTag = enum(u8) {
     REST,
 };
 
-const TestToken = ZpcToken(TestTag, .RUNTIME);
+const TestToken = ZpcToken(TestTag, .run);
 const TestResult = ZpcResult(TestToken);
 
 const TestContext = struct {
@@ -337,10 +341,18 @@ pub fn predSet(charset: []const u8) Predicate {
 }
 
 pub fn Zpc(comptime Context: type, comptime Tag: type) type {
+    return make_zpc(Context, Tag, .run);
+}
+
+pub fn ZpcComptime(comptime Context: type, comptime Tag: type) type {
+    return make_zpc(Context, Tag, .comp);
+}
+
+fn make_zpc(comptime Context: type, comptime Tag: type, phase: ZpcPhase) type {
     if (!@hasField(Context, "allocator"))
         @compileError("Context must have an allocator field");
     return struct {
-        pub const Token = ZpcToken(Tag, .RUNTIME);
+        pub const Token = ZpcToken(Tag, phase);
         pub const Result = ZpcResult(Token);
         pub const Parser = ZpcParser(Context, Result);
         pub const Mapper = fn (ctx: Context, result: Result) ZpcError!Result;
