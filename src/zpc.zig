@@ -263,6 +263,8 @@ const TestTag = enum(u8) {
     REST,
 };
 
+const TestToken = ZpcToken(TestTag, .RUNTIME);
+
 const TestContext = struct {
     allocator: Allocator,
     expr: *const ZpcParser(@This(), TestTag) = undefined,
