@@ -156,10 +156,10 @@ pub fn ZpcToken(comptime Tag: type, comptime phase: ZpcPhase) type {
     };
 }
 
-pub fn ZpcResult(comptime Tag: type) type {
+pub fn ZpcResult(comptime Token: type) type {
     return struct {
         const Self = @This();
-        const Token = ZpcToken(Tag, .RUNTIME);
+        // const Token = ZpcToken(Tag, .RUNTIME);
 
         pub const Formatter = struct {
             token: *const Self,
@@ -235,8 +235,8 @@ pub fn ZpcResult(comptime Tag: type) type {
     };
 }
 
-pub fn ZpcParser(comptime Context: type, comptime Tag: type) type {
-    return fn (ctx: Context, input: []const u8) ZpcError!ZpcResult(Tag);
+pub fn ZpcParser(comptime Context: type, comptime Result: type) type {
+    return fn (ctx: Context, input: []const u8) ZpcError!Result;
 }
 
 const TestTag = enum(u8) {
@@ -264,17 +264,17 @@ const TestTag = enum(u8) {
 };
 
 const TestToken = ZpcToken(TestTag, .RUNTIME);
-const TestResult = ZpcResult(TestTag);
+const TestResult = ZpcResult(TestToken);
 
 const TestContext = struct {
     allocator: Allocator,
-    expr: *const ZpcParser(@This(), TestTag) = undefined,
+    expr: *const ZpcParser(@This(), TestResult) = undefined,
 };
 
 fn checkAndConsume(
     ctx: TestContext,
-    expected: ZpcResult(TestTag),
-    actual: ZpcResult(TestTag),
+    expected: TestResult,
+    actual: TestResult,
 ) !void {
     defer actual.deinit(ctx.allocator);
     try expectEqualDeep(expected, actual);
@@ -341,8 +341,8 @@ pub fn Zpc(comptime Context: type, comptime Tag: type) type {
         @compileError("Context must have an allocator field");
     return struct {
         pub const Token = ZpcToken(Tag, .RUNTIME);
-        pub const Result = ZpcResult(Tag);
-        pub const Parser = ZpcParser(Context, Tag);
+        pub const Result = ZpcResult(Token);
+        pub const Parser = ZpcParser(Context, Result);
         pub const Mapper = fn (ctx: Context, result: Result) ZpcError!Result;
 
         pub const Quantifier = struct {

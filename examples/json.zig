@@ -19,10 +19,12 @@ const JsonTag = enum(u8) {
     OBJECT,
     KEYVALUE,
 };
+const Token = zpc.ZpcToken(JsonTag, .RUNTIME);
+const Result = zpc.ZpcResult(Token);
 
 const JsonContext = struct {
     allocator: Allocator,
-    jsonParser: *const zpc.ZpcParser(@This(), JsonTag),
+    jsonParser: *const zpc.ZpcParser(@This(), Result),
 };
 
 const P = zpc.Zpc(JsonContext, JsonTag);

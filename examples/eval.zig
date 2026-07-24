@@ -31,9 +31,12 @@ const Tag = enum(u8) {
     NE,
 };
 
+const Token = zpc.ZpcToken(Tag, .RUNTIME);
+const Result = zpc.ZpcResult(Token);
+
 const Context = struct {
     allocator: Allocator,
-    expr: *const zpc.ZpcParser(@This(), Tag),
+    expr: *const zpc.ZpcParser(@This(), Result),
 };
 
 const P = zpc.Zpc(Context, Tag);
