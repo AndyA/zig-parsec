@@ -7,6 +7,7 @@ const examples: []const []const u8 = &.{
     "eval",
     "json",
     "jsonpath",
+    "mule",
 };
 
 pub fn build(b: *std.Build) void {

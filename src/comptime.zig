@@ -46,19 +46,3 @@ pub fn ComptimeArray(comptime T: type) type {
         }
     };
 }
-
-const Thing = struct {
-    n: u16,
-};
-
-pub fn main(_: std.process.Init) !void {
-    const ctx = comptime blk: {
-        var c: ComptimeArray(Thing) = .empty;
-        try c.append(non_allocator, .{ .n = 1 });
-        try c.append(non_allocator, .{ .n = 2 });
-        try c.append(non_allocator, .{ .n = 3 });
-        break :blk c;
-    };
-
-    print("{any}\n", .{ctx});
-}
