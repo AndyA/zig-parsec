@@ -264,6 +264,7 @@ const TestTag = enum(u8) {
 };
 
 const TestToken = ZpcToken(TestTag, .RUNTIME);
+const TestResult = ZpcResult(TestTag);
 
 const TestContext = struct {
     allocator: Allocator,
